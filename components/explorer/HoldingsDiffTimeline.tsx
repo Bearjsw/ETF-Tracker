@@ -1,63 +1,154 @@
+"use client";
+
 import Link from "next/link";
-import type { HoldingDiff } from "@/lib/types";
-import { changeTypeLabel, formatKrw, formatNumber } from "@/lib/utils";
+import { useEffect, useMemo, useState } from "react";
+import type { HoldingDiff, HoldingDiffEnriched } from "@/lib/types";
+import { DeltaBadge } from "@/components/explorer/DeltaBadge";
+import { AssetClassTag } from "@/components/explorer/AssetClassTag";
+import { StockLabel } from "@/components/explorer/StockLabel";
+import { Pagination } from "@/components/ui/Pagination";
+import {
+  changeTypeBadgeClass,
+  changeTypeLabel,
+  formatKrw,
+  formatNumber,
+  formatPercent,
+  formatRelativeChangeDate,
+  isAccumulation,
+} from "@/lib/utils";
+
+const DEFAULT_PAGE_SIZE = 10;
 
 type Props = {
-  diffs: HoldingDiff[];
+  diffs: (HoldingDiff | HoldingDiffEnriched)[];
   title?: string;
+  showEtf?: boolean;
+  pageSize?: number;
+  paginate?: boolean;
 };
 
-function badgeClass(type: string) {
-  switch (type) {
-    case "new":
-      return "badge badge-new";
-    case "removed":
-      return "badge badge-removed";
-    case "weight_up":
-      return "badge badge-up";
-    default:
-      return "badge badge-down";
-  }
-}
+export function HoldingsDiffTimeline({
+  diffs,
+  title = "비중 변화 이력",
+  showEtf = false,
+  pageSize = DEFAULT_PAGE_SIZE,
+  paginate = true,
+}: Props) {
+  const [page, setPage] = useState(1);
+  const usePagination = paginate && diffs.length > pageSize;
+  const totalPages = Math.max(1, Math.ceil(diffs.length / pageSize));
+  const safePage = Math.min(page, totalPages);
 
-export function HoldingsDiffTimeline({ diffs, title = "보유 변화" }: Props) {
+  const visibleDiffs = useMemo(
+    () => (usePagination ? diffs.slice((safePage - 1) * pageSize, safePage * pageSize) : diffs),
+    [diffs, usePagination, safePage, pageSize],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [diffs.length, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   if (!diffs.length) {
-    return <div className="card text-[var(--muted)]">보유 변화 이력이 없습니다.</div>;
+    return (
+      <div className="card text-sm text-[var(--muted)]">
+        {title} — 기록된 변화가 없습니다.
+      </div>
+    );
   }
 
   return (
-    <div className="card overflow-x-auto">
-      <h2 className="mb-3 text-lg font-semibold">{title}</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>날짜</th>
-            <th>종목</th>
-            <th>변화</th>
-            <th>이전비중</th>
-            <th>현재비중</th>
-            <th>추정금액</th>
-          </tr>
-        </thead>
-        <tbody>
-          {diffs.map((diff) => (
-            <tr key={`${diff.date}-${diff.stock_code}-${diff.change_type}`}>
-              <td>{diff.date}</td>
-              <td>
-                <Link href={`/stocks/${diff.stock_code}`} className="text-[var(--accent)]">
-                  {diff.stock_name ?? diff.stock_code}
-                </Link>
-              </td>
-              <td>
-                <span className={badgeClass(diff.change_type)}>{changeTypeLabel(diff.change_type)}</span>
-              </td>
-              <td>{formatNumber(diff.weight_prev, 2)}</td>
-              <td>{formatNumber(diff.weight_curr, 2)}</td>
-              <td>{formatKrw(diff.est_flow_krw)}</td>
+    <div className="space-y-4">
+      {usePagination ? (
+        <p className="text-xs tabular-nums text-[var(--muted)]">
+          {diffs.length}건 · {safePage}/{totalPages}페이지
+        </p>
+      ) : null}
+
+      <div className="card overflow-x-auto">
+        <h2 className="section-title mb-3">{title}</h2>
+        <table className="timeline-table">
+          <thead>
+            <tr>
+              <th>날짜</th>
+              {showEtf ? <th>ETF</th> : null}
+              <th>종목</th>
+              <th>유형</th>
+              <th>변화</th>
+              <th>이전→현재</th>
+              <th>추정 흐름</th>
+              <th>수익</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visibleDiffs.map((diff) => {
+              const enriched = diff as HoldingDiffEnriched;
+              const accumulating = isAccumulation(diff.change_type, diff.weight_delta);
+              const perf = enriched.return_since_change;
+
+              return (
+                <tr key={`${diff.date}-${diff.etf_ticker}-${diff.stock_code}-${diff.change_type}`}>
+                  <td className="timeline-date" title={diff.date}>
+                    {formatRelativeChangeDate(diff.date)}
+                  </td>
+                  {showEtf ? (
+                    <td className="timeline-stock">
+                      <Link href={`/etfs/${diff.etf_ticker}`} className="hover:text-[var(--accent)]">
+                        {enriched.etf_name ?? diff.etf_ticker}
+                      </Link>
+                    </td>
+                  ) : null}
+                  <td className="timeline-stock">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Link href={`/stocks/${diff.stock_code}`} className="font-medium hover:text-[var(--accent)]">
+                        <StockLabel stockName={diff.stock_name} stockCode={diff.stock_code} />
+                      </Link>
+                      <AssetClassTag stockName={diff.stock_name} stockCode={diff.stock_code} />
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`${changeTypeBadgeClass(diff.change_type)} text-[10px]`}>
+                      {changeTypeLabel(diff.change_type)}
+                    </span>
+                  </td>
+                  <td>
+                    <DeltaBadge
+                      delta={diff.weight_delta}
+                      weightPrev={diff.weight_prev}
+                      weightCurr={diff.weight_curr}
+                      showRelative
+                      size="sm"
+                    />
+                  </td>
+                  <td className="timeline-num text-[var(--muted)]">
+                    {formatNumber(diff.weight_prev, 1)}→{formatNumber(diff.weight_curr, 1)}%
+                  </td>
+                  <td
+                    className={`timeline-num font-medium ${accumulating ? "delta-positive" : "delta-negative"}`}
+                  >
+                    {accumulating ? "+" : "−"}
+                    {formatKrw(Math.abs(diff.est_flow_krw ?? 0))}
+                  </td>
+                  <td
+                    className={`timeline-num font-medium ${
+                      perf == null ? "text-[var(--muted)]" : perf >= 0 ? "delta-positive" : "delta-negative"
+                    }`}
+                  >
+                    {perf != null ? formatPercent(perf, 1, true) : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {usePagination ? (
+        <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
+      ) : null}
     </div>
   );
 }

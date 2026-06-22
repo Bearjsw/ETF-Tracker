@@ -1,5 +1,9 @@
 import Link from "next/link";
 import type { HoldingDaily } from "@/lib/types";
+import { AssetClassTag } from "@/components/explorer/AssetClassTag";
+import { StockLabel } from "@/components/explorer/StockLabel";
+import { latestHoldingsSorted } from "@/lib/holdings";
+import { WeightBar } from "@/components/explorer/WeightBar";
 import { formatNumber } from "@/lib/utils";
 
 type Props = {
@@ -8,36 +12,43 @@ type Props = {
 };
 
 export function HoldingsTable({ holdings, latestDate }: Props) {
-  const rows = latestDate
-    ? holdings.filter((h) => h.date === latestDate)
-    : holdings.slice(0, 50);
+  const rows = latestHoldingsSorted(holdings);
+  const date = latestDate ?? rows[0]?.date;
+  const maxWeight = rows[0]?.weight ?? 15;
 
   if (!rows.length) {
-    return <div className="card text-[var(--muted)]">보유종목 데이터가 없습니다.</div>;
+    return null;
   }
 
   return (
     <div className="card overflow-x-auto">
-      <h2 className="mb-3 text-lg font-semibold">보유종목 {latestDate ? `(${latestDate})` : ""}</h2>
+      <h2 className="section-title mb-3">전체 보유종목 {date ? `(${date})` : ""}</h2>
+      <p className="mb-4 text-sm text-[var(--muted)]">비중 높은 순으로 정렬됩니다.</p>
       <table>
         <thead>
           <tr>
-            <th>종목코드</th>
-            <th>종목명</th>
-            <th>비중(%)</th>
+            <th>순위</th>
+            <th>종목</th>
+            <th>비중</th>
             <th>수량</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((row, index) => (
             <tr key={`${row.stock_code}-${row.date}`}>
+              <td className="text-[var(--muted)]">{index + 1}</td>
               <td>
-                <Link href={`/stocks/${row.stock_code}`} className="text-[var(--accent)]">
-                  {row.stock_code}
-                </Link>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Link href={`/stocks/${row.stock_code}`} className="text-[var(--accent)]">
+                    <StockLabel stockName={row.stock_name} stockCode={row.stock_code} />
+                  </Link>
+                  <AssetClassTag stockName={row.stock_name} stockCode={row.stock_code} />
+                </div>
+                <div className="text-xs text-[var(--muted)]">{row.stock_code}</div>
               </td>
-              <td>{row.stock_name ?? "-"}</td>
-              <td>{formatNumber(row.weight, 2)}</td>
+              <td>
+                <WeightBar weight={row.weight} maxWeight={maxWeight} />
+              </td>
               <td>{formatNumber(row.quantity)}</td>
             </tr>
           ))}

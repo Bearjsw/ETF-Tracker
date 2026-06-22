@@ -44,3 +44,7 @@ venv/
 
 # data outputs
 data/xlsx_analysis.json
+scripts/.checkpoints/
+
+.vercel
+.env*

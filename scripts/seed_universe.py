@@ -12,7 +12,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from column_mapping import build_column_mapping, row_to_universe_record
+from column_mapping import build_column_mapping, normalize_ticker, row_to_universe_record
 from db_client import get_connection, upsert_rows
 
 DEFAULT_XLSX = Path(r"c:\Users\USER\OneDrive\문서\카카오톡 받은 파일\ETF_ALL.xlsx")
@@ -20,6 +20,15 @@ DEFAULT_XLSX = Path(r"c:\Users\USER\OneDrive\문서\카카오톡 받은 파일\E
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     xl = pd.ExcelFile(path)
+    preview = pd.read_excel(path, sheet_name=xl.sheet_names[0], header=None, nrows=30)
+    header_row = None
+    for idx in range(len(preview)):
+        first = preview.iloc[idx, 0]
+        if str(first).strip() == "Code":
+            header_row = idx
+            break
+    if header_row is not None:
+        return pd.read_excel(path, sheet_name=xl.sheet_names[0], header=header_row)
     return pd.read_excel(path, sheet_name=xl.sheet_names[0])
 
 
@@ -88,6 +97,53 @@ def upsert_records(records: list[dict], dry_run: bool = False) -> int:
     return total
 
 
+def build_meta_records(path: Path, snapshot_date: str) -> list[dict]:
+    df = load_dataframe(path)
+    mapping = build_column_mapping(df)
+    ticker_col = mapping.get("ticker")
+    if not ticker_col:
+        return []
+
+    meta_rows: list[dict] = []
+    for _, row in df.iterrows():
+        ticker = normalize_ticker(row.get(ticker_col))
+        if not ticker:
+            continue
+        aum = row.get("AUM")
+        nav = row.get("ETF순자산가치(NAV)")
+        if pd.isna(aum) and pd.isna(nav):
+            continue
+        meta_rows.append(
+            {
+                "date": snapshot_date,
+                "etf_ticker": ticker,
+                "aum": float(aum) if pd.notna(aum) else None,
+                "nav": float(nav) if pd.notna(nav) else None,
+                "listed_shares": None,
+            }
+        )
+    return meta_rows
+
+
+def upsert_meta_records(records: list[dict], dry_run: bool = False) -> int:
+    if dry_run or not records:
+        return len(records)
+
+    with get_connection() as conn:
+        batch_size = 200
+        total = 0
+        for i in range(0, len(records), batch_size):
+            chunk = records[i : i + batch_size]
+            total += upsert_rows(
+                conn,
+                "etf_meta_daily",
+                chunk,
+                conflict_columns=["date", "etf_ticker"],
+                update_columns=["aum", "nav", "listed_shares"],
+            )
+    return total
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed etf_universe from ETF_ALL.xlsx")
     parser.add_argument("--xlsx", type=Path, default=DEFAULT_XLSX)
@@ -110,6 +166,11 @@ def main() -> None:
 
     count = upsert_records(result["records"], dry_run=args.dry_run)
     print(f"Upserted {count} ETF universe rows")
+
+    snapshot_date = datetime.now(timezone.utc).date().isoformat()
+    meta_records = build_meta_records(args.xlsx, snapshot_date)
+    meta_count = upsert_meta_records(meta_records, dry_run=args.dry_run)
+    print(f"Upserted {meta_count} ETF meta rows (AUM/NAV snapshot {snapshot_date})")
 
 
 if __name__ == "__main__":

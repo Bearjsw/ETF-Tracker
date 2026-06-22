@@ -1,34 +1,163 @@
 import Link from "next/link";
+import { Suspense } from "react";
+import { ActiveMarketOverviewCard } from "@/components/explorer/ActiveMarketOverviewCard";
+import { AssetClassFundFlowSection } from "@/components/explorer/AssetClassFundFlowSection";
+import { ChangeFeed } from "@/components/explorer/ChangeFeed";
+import { HomeEtfRankLoader, HomeEtfRankSkeleton } from "@/components/explorer/HomeEtfRankLoader";
+import { HomeStockFlowLoader, HomeStockFlowSkeleton } from "@/components/explorer/HomeStockFlowLoader";
+import { ManagerFilter } from "@/components/explorer/ManagerFilter";
+import { SignalListTable } from "@/components/explorer/SignalListTable";
+import { StatCard } from "@/components/explorer/StatCard";
+import { StockFlowSortBar } from "@/components/explorer/StockFlowSortBar";
+import { EtfPeriodTabs } from "@/components/explorer/EtfPeriodTabs";
+import {
+  fetchDashboard,
+  fetchActiveMarketOverview,
+  fetchAssetClassFundFlows,
+  fetchEtfNamesByTickers,
+  fetchManagers,
+  fetchStockPriceSparklinesByRef,
+} from "@/lib/db/queries";
+import { parseReturnPeriod, parseStockFlowSort } from "@/lib/rankings";
+import { formatKrw, formatStatsPeriod } from "@/lib/utils";
 
-export default function HomePage() {
+type SearchParams = Promise<{ manager?: string; sort?: string; period?: string }>;
+
+export default async function HomePage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const manager = params.manager || undefined;
+  const sort = parseStockFlowSort(params.sort);
+  const period = parseReturnPeriod(params.period);
+
+  const [managers, dashboard, marketOverview, fundFlows] = await Promise.all([
+    fetchManagers(),
+    fetchDashboard(manager),
+    fetchActiveMarketOverview(manager),
+    fetchAssetClassFundFlows(manager),
+  ]);
+  const { stats, topSignals, recentChanges } = dashboard;
+
+  const signalTickers = [...new Set(topSignals.flatMap((s) => s.etf_tickers ?? []))];
+  const previewChanges = recentChanges.slice(0, 4);
+
+  const [etfMap, priceByStock] = await Promise.all([
+    fetchEtfNamesByTickers(signalTickers),
+    fetchStockPriceSparklinesByRef(
+      previewChanges.map((c) => ({ stock_code: c.stock_code, stock_name: c.stock_name })),
+      90,
+      { maxYahooFetches: 8 },
+    ),
+  ]);
+
   return (
-    <div className="space-y-6">
-      <section className="card">
-        <h1 className="text-3xl font-semibold">ETF-Tracker 수렴진화</h1>
-        <p className="mt-3 max-w-2xl text-[var(--muted)]">
-          국내 ETF의 일별 보유 변화를 추적하고, 운용사·ETF·종목 단위로 탐색합니다.
-          pykrx 기반 수집 파이프라인과 Vercel Postgres 대시보드를 제공합니다.
+    <div className="space-y-8">
+      <section className="space-y-3">
+        <p className="text-label">액티브 ETF 비중 추적</p>
+        <h1 className="text-display max-w-xl">
+          비중이 바뀐 만큼,
+          <br />
+          <span className="rounded-md bg-[var(--accent-bright)] px-1.5">수익이 따라왔는지</span> 확인하세요
+        </h1>
+        <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)]">
+          시장 규모·자금흐름, 종목 look-through 비중 변화, 시그널을 각각 나눠 추적합니다.
         </p>
-        <div className="mt-6 flex gap-3">
-          <Link href="/etfs" className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">
-            ETF Explorer 열기
+        <div className="flex flex-wrap gap-3 pt-2">
+          <Link href="/market" className="btn-primary">
+            시장
           </Link>
-          <Link href="/signals" className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm">
-            Signals 보기
+          <Link href="/flows" className="btn-ghost">
+            흐름
+          </Link>
+          <Link href="/signals" className="btn-ghost">
+            시그널
           </Link>
         </div>
       </section>
-      <section className="grid gap-4 md:grid-cols-3">
-        {[
-          ["운용사별 탐색", "/etfs", "어떤 운용사가 어떤 ETF를 운용하는지"],
-          ["보유 변화", "/etfs", "신규편입·제외·비중 변화 타임라인"],
-          ["종목 역추적", "/etfs", "특정 종목을 담은 ETF 목록"],
-        ].map(([title, href, desc]) => (
-          <Link key={title} href={href} className="card hover:border-[var(--accent)]">
-            <h2 className="font-semibold">{title}</h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">{desc}</p>
+
+      <ManagerFilter managers={managers} current={manager} />
+
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="최근 변화" value={`${stats.changeCount}건`} sub={formatStatsPeriod(stats)} />
+        <StatCard
+          label="순매수 추정"
+          value={formatKrw(stats.accumulationFlow)}
+          sub={`최근 ${stats.windowDays ?? 3}일 · 비중 확대·신규편입`}
+          trend="positive"
+        />
+        <StatCard
+          label="순매도 추정"
+          value={formatKrw(stats.distributionFlow)}
+          sub={`최근 ${stats.windowDays ?? 3}일 · 비중 축소·제외`}
+          trend="negative"
+        />
+        <StatCard
+          label="활성 시그널"
+          value={`${stats.signalCount}건`}
+          sub={`추적 중 ${stats.activeEtfCount}개 ETF`}
+        />
+      </section>
+
+      <ActiveMarketOverviewCard overview={marketOverview} manager={manager} />
+
+      <AssetClassFundFlowSection report={fundFlows} manager={manager} compact />
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="section-title">종목 흐름</h2>
+          <Link href="/flows" className="text-sm font-semibold text-[var(--accent)] hover:underline">
+            전체 보기
           </Link>
-        ))}
+        </div>
+        <Suspense fallback={null}>
+          <StockFlowSortBar current={{ sort, period, manager }} basePath="/flows" />
+        </Suspense>
+        <Suspense fallback={<HomeStockFlowSkeleton />}>
+          <HomeStockFlowLoader manager={manager} sort={sort} period={period} limit={5} />
+        </Suspense>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="section-title">비중 변화</h2>
+          <Link href="/flows" className="text-sm font-semibold text-[var(--accent)] hover:underline">
+            전체 보기
+          </Link>
+        </div>
+        <ChangeFeed
+          changes={previewChanges}
+          title=""
+          layout="grid"
+          priceByStock={priceByStock}
+        />
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="section-title">시그널</h2>
+          <Link href="/signals" className="text-sm font-semibold text-[var(--accent)] hover:underline">
+            전체 보기
+          </Link>
+        </div>
+        {topSignals.length ? (
+          <SignalListTable signals={topSignals.slice(0, 4)} etfMap={etfMap} />
+        ) : (
+          <div className="card text-sm text-[var(--muted)]">아직 시그널이 없습니다.</div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="section-title">ETF 수익률</h2>
+          <Link href="/etfs?strategy=active" className="text-sm font-semibold text-[var(--accent)] hover:underline">
+            전체 ETF
+          </Link>
+        </div>
+        <Suspense fallback={null}>
+          <EtfPeriodTabs current={{ period }} basePath="/" />
+        </Suspense>
+        <Suspense fallback={<HomeEtfRankSkeleton />}>
+          <HomeEtfRankLoader manager={manager} period={period} />
+        </Suspense>
       </section>
     </div>
   );

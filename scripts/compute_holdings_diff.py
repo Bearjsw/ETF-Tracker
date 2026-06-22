@@ -11,8 +11,34 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from db_client import fetch_all, get_connection, upsert_rows
+from stock_filter import is_trackable_stock
 
 WEIGHT_THRESHOLD = 0.05
+FULL_SNAPSHOT_MIN_ETFS = 450
+
+
+def resolve_prev_date(conn, as_of: date, explicit: date | None) -> date:
+    if explicit is not None:
+        rows = fetch_all(conn, "SELECT 1 FROM holdings_daily WHERE date = %s LIMIT 1", [explicit.isoformat()])
+        if rows:
+            return explicit
+
+    rows = fetch_all(
+        conn,
+        """
+        SELECT date::date AS d
+        FROM holdings_daily
+        WHERE date < %s
+        GROUP BY date
+        HAVING COUNT(DISTINCT etf_ticker) >= %s
+        ORDER BY date DESC
+        LIMIT 1
+        """,
+        [as_of.isoformat(), FULL_SNAPSHOT_MIN_ETFS],
+    )
+    if rows and rows[0].get("d"):
+        return date.fromisoformat(str(rows[0]["d"]))
+    return as_of - timedelta(days=1)
 
 
 def load_holdings(conn, as_of: date, tickers: list[str] | None = None) -> list[dict[str, Any]]:
@@ -28,12 +54,52 @@ def load_holdings(conn, as_of: date, tickers: list[str] | None = None) -> list[d
 def load_meta(conn, as_of: date, ticker: str) -> float | None:
     rows = fetch_all(
         conn,
-        "SELECT aum FROM etf_meta_daily WHERE date = %s AND etf_ticker = %s LIMIT 1",
-        [as_of.isoformat(), ticker],
+        """
+        SELECT aum, nav, listed_shares
+        FROM etf_meta_daily
+        WHERE etf_ticker = %s AND date <= %s
+        ORDER BY date DESC
+        LIMIT 1
+        """,
+        [ticker, as_of.isoformat()],
     )
     if rows:
-        return rows[0].get("aum")
+        row = rows[0]
+        aum = row.get("aum")
+        if aum is not None and float(aum) > 0:
+            return float(aum)
+        nav = row.get("nav")
+        shares = row.get("listed_shares")
+        if nav is not None and shares is not None and float(nav) > 0 and float(shares) > 0:
+            return float(nav) * float(shares)
+
+    fallback = fetch_all(
+        conn,
+        """
+        SELECT aum FROM etf_meta_daily
+        WHERE etf_ticker = %s AND aum IS NOT NULL AND aum > 0
+        ORDER BY date DESC
+        LIMIT 1
+        """,
+        [ticker],
+    )
+    if fallback:
+        return float(fallback[0]["aum"])
     return None
+
+
+def load_median_aum(conn) -> float:
+    rows = fetch_all(
+        conn,
+        """
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY aum) AS median_aum
+        FROM etf_meta_daily
+        WHERE aum IS NOT NULL AND aum > 0
+        """,
+    )
+    if rows and rows[0].get("median_aum"):
+        return float(rows[0]["median_aum"])
+    return 50_000_000_000.0
 
 
 def index_holdings(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -45,6 +111,7 @@ def compute_diff(
     curr_rows: list[dict[str, Any]],
     as_of: date,
     aum_by_ticker: dict[str, float | None],
+    median_aum: float | None = None,
 ) -> list[dict[str, Any]]:
     prev = index_holdings(prev_rows)
     curr = index_holdings(curr_rows)
@@ -57,6 +124,8 @@ def compute_diff(
         weight_prev = prev_row.get("weight") if prev_row else None
         weight_curr = curr_row.get("weight") if curr_row else None
         stock_name = (curr_row or prev_row or {}).get("stock_name")
+        if not is_trackable_stock(str(stock_code), stock_name):
+            continue
 
         if prev_row is None and curr_row is not None:
             change_type = "new"
@@ -78,8 +147,10 @@ def compute_diff(
 
         est_flow = None
         aum = aum_by_ticker.get(etf_ticker)
+        if aum is None and median_aum is not None:
+            aum = median_aum
         if aum is not None and weight_delta is not None:
-            est_flow = aum * (weight_delta / 100.0)
+            est_flow = float(aum) * (float(weight_delta) / 100.0)
 
         diffs.append(
             {
@@ -104,16 +175,18 @@ def main() -> None:
     args = parser.parse_args()
 
     as_of = date.fromisoformat(args.date)
-    prev_date = date.fromisoformat(args.prev_date) if args.prev_date else as_of - timedelta(days=1)
+    explicit_prev = date.fromisoformat(args.prev_date) if args.prev_date else None
 
     with get_connection() as conn:
+        prev_date = resolve_prev_date(conn, as_of, explicit_prev)
         prev_rows = load_holdings(conn, prev_date)
         curr_rows = load_holdings(conn, as_of)
 
         tickers = sorted({row["etf_ticker"] for row in curr_rows})
         aum_by_ticker = {ticker: load_meta(conn, as_of, ticker) for ticker in tickers}
+        median_aum = load_median_aum(conn)
 
-        diffs = compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker)
+        diffs = compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker, median_aum)
         if diffs:
             upsert_rows(
                 conn,
@@ -129,7 +202,7 @@ def main() -> None:
                 ],
             )
 
-    print(f"Computed {len(diffs)} diffs for {as_of.isoformat()}")
+    print(f"Computed {len(diffs)} diffs for {as_of.isoformat()} (prev {prev_date.isoformat()})")
 
 
 if __name__ == "__main__":

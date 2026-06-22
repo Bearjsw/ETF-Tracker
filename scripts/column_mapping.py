@@ -7,18 +7,29 @@ from typing import Any
 
 import pandas as pd
 
-TICKER_KEYS = ["종목코드", "티커", "ETF코드", "단축코드", "코드", "ticker"]
-NAME_KEYS = ["종목약명", "종목명", "ETF명", "펀드명", "상품명", "name"]
-MANAGER_KEYS = ["운용사", "자산운용", "운용회사", "AMC", "자산운용사"]
-MARKET_KEYS = ["기초시장분류", "시장", "시장구분", "거래소", "market"]
-STRATEGY_KEYS = ["ETP분류", "복제추적", "지수산출방식", "운용방식", "운용형태", "운용유형", "strategy"]
+TICKER_KEYS = ["종목코드", "티커", "ETF코드", "단축코드", "코드", "ticker", "Code"]
+NAME_KEYS = ["종목약명", "종목명", "ETF명", "펀드명", "상품명", "name", "Name"]
+MANAGER_KEYS = ["운용사", "자산운용", "운용회사", "AMC", "자산운용사", "자산운용사"]
+MARKET_KEYS = ["기초시장분류", "시장", "시장구분", "거래소", "market", "ETF기초시장(대)"]
+STRATEGY_KEYS = ["ETP분류", "복제추적", "지수산출방식", "운용방식", "운용형태", "운용유형", "strategy", "ETF복제방법", "ETF상품유형구분"]
 LISTING_KEYS = ["상장", "listing", "상장여부", "상장상태"]
-LIST_DATE_KEYS = ["상장일", "설정일", "listing_date"]
+LIST_DATE_KEYS = ["상장일", "설정일", "listing_date", "최초설정일"]
 DELIST_DATE_KEYS = ["상장폐지", "폐지일", "delist"]
 INDEX_KEYS = ["기초지수명", "기초지수", "추적지수", "지수명", "벤치마크", "index"]
 THEME_KEYS = ["기초자산분류", "테마", "분류", "유형", "category", "섹터"]
 
-EXTRA_STRATEGY_COLS = ["ETP분류", "복제추적", "지수산출방식", "기초지수명", "종목명", "종목약명"]
+EXTRA_STRATEGY_COLS = [
+    "ETP분류",
+    "복제추적",
+    "지수산출방식",
+    "기초지수명",
+    "ETF기초지수명",
+    "종목명",
+    "종목약명",
+    "ETF복제방법",
+    "ETF상품유형구분",
+    "Name",
+]
 
 
 def find_col(df: pd.DataFrame, keywords: list[str]) -> str | None:
@@ -34,9 +45,13 @@ def find_col(df: pd.DataFrame, keywords: list[str]) -> str | None:
 def normalize_ticker(value: Any) -> str | None:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
-    text = str(value).strip()
+    text = str(value).strip().upper()
     if not text or text.lower() == "nan":
         return None
+    # Bloomberg Code (e.g. A0000D0) or legacy 6-digit tickers
+    compact = re.sub(r"\s+", "", text)
+    if re.fullmatch(r"[A-Z]?\w+", compact) and re.search(r"\d", compact):
+        return compact
     digits = re.sub(r"\D", "", text)
     if not digits:
         return None
@@ -93,6 +108,20 @@ def build_column_mapping(df: pd.DataFrame) -> dict[str, str | None]:
     }
 
 
+def parse_date_value(value: Any) -> str | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, (int, float)):
+        digits = str(int(value))
+        if len(digits) == 8 and digits.isdigit():
+            return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+    parsed = pd.to_datetime(value, errors="coerce")
+    if pd.isna(parsed):
+        return None
+    iso = parsed.date().isoformat()
+    return None if iso.startswith("1970-") else iso
+
+
 def row_to_universe_record(row: pd.Series, mapping: dict[str, str | None]) -> dict[str, Any] | None:
     ticker_col = mapping.get("ticker")
     if not ticker_col:
@@ -120,25 +149,31 @@ def row_to_universe_record(row: pd.Series, mapping: dict[str, str | None]) -> di
 
     delist_date = None
     if delist_date_col and pd.notna(row.get(delist_date_col)):
-        delist_date = pd.to_datetime(row[delist_date_col], errors="coerce")
-        if pd.notna(delist_date):
-            delist_date = delist_date.date().isoformat()
+        delist_date = parse_date_value(row.get(delist_date_col))
+        if delist_date:
             is_listed = False
 
     strategy_type = classify_strategy(row, mapping)
     theme_tags = extract_theme_tags(row, mapping)
 
     list_date = None
-    if list_date_col and pd.notna(row.get(list_date_col)):
-        parsed = pd.to_datetime(row[list_date_col], errors="coerce")
-        if pd.notna(parsed):
-            list_date = parsed.date().isoformat()
+    for col in ("상장일", list_date_col, "최초설정일", "설정일"):
+        if col and col in row.index and pd.notna(row.get(col)):
+            list_date = parse_date_value(row.get(col))
+            if list_date:
+                break
+
+    market = str(row[market_col]).strip() if market_col and pd.notna(row.get(market_col)) else None
+    if market in {"KS", "KP"}:
+        market = "KOSPI"
+    elif market in {"EX", "KQ"}:
+        market = "KOSDAQ"
 
     return {
         "ticker": ticker,
         "name": str(row[name_col]).strip() if name_col and pd.notna(row.get(name_col)) else ticker,
         "manager": str(row[manager_col]).strip() if manager_col and pd.notna(row.get(manager_col)) else None,
-        "market": str(row[market_col]).strip() if market_col and pd.notna(row.get(market_col)) else None,
+        "market": market,
         "strategy_type": strategy_type,
         "theme_tags": theme_tags,
         "listing_date": list_date,

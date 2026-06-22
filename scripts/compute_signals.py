@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from collections import defaultdict
 from datetime import date, timedelta
@@ -15,9 +16,18 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from db_client import fetch_all, get_connection, insert_rows, upsert_rows
+from stock_filter import is_trackable_stock
 
 WINDOWS = [5, 10, 20]
 P95_MIN_SAMPLES = 20
+
+
+def finite_float(value: float) -> float | None:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) else None
 
 
 def load_holdings_history(conn, end: date, lookback_days: int = 30) -> pd.DataFrame:
@@ -100,6 +110,8 @@ def compute_active_rate_signals(
         scores: list[tuple[str, str, float, list[str]]] = []
         grouped = merged.groupby(["stock_code", "stock_name"], dropna=False)
         for (stock_code, stock_name), stock_df in grouped:
+            if not is_trackable_stock(str(stock_code), stock_name):
+                continue
             etf_changes: list[tuple[str, float]] = []
             for etf_ticker, etf_df in stock_df.groupby("etf_ticker"):
                 etf_df = etf_df.sort_values("date")
@@ -111,8 +123,8 @@ def compute_active_rate_signals(
                 share_rate = shares.pct_change(window).iloc[-1]
                 if pd.isna(qty_rate) or pd.isna(share_rate):
                     continue
-                active_rate = float(qty_rate - share_rate)
-                if abs(active_rate) < 1e-6:
+                active_rate = finite_float(qty_rate - share_rate)
+                if active_rate is None or abs(active_rate) < 1e-6:
                     continue
                 etf_changes.append((etf_ticker, active_rate))
 
@@ -121,20 +133,27 @@ def compute_active_rate_signals(
             pos = [t for t, v in etf_changes if v > 0]
             neg = [t for t, v in etf_changes if v < 0]
             if len(pos) >= 2:
-                score = float(np.mean([v for _, v in etf_changes if v > 0]))
-                scores.append((stock_code, stock_name or stock_code, score, pos))
+                score = finite_float(np.mean([v for _, v in etf_changes if v > 0]))
+                if score is not None:
+                    scores.append((stock_code, stock_name or stock_code, score, pos))
             elif len(neg) >= 2:
-                score = float(np.mean([abs(v) for _, v in etf_changes if v < 0]))
-                scores.append((stock_code, stock_name or stock_code, -score, neg))
+                score = finite_float(np.mean([abs(v) for _, v in etf_changes if v < 0]))
+                if score is not None:
+                    scores.append((stock_code, stock_name or stock_code, -score, neg))
 
         if not scores:
             continue
 
-        abs_scores = [abs(s[2]) for s in scores]
+        abs_scores = [abs(s[2]) for s in scores if finite_float(s[2]) is not None]
+        if not abs_scores:
+            continue
         p95 = float(np.percentile(abs_scores, 95)) if len(abs_scores) >= P95_MIN_SAMPLES else max(abs_scores)
 
         for stock_code, stock_name, score, etfs in scores:
-            direction = "accumulation" if score > 0 else "distribution"
+            safe_score = finite_float(score)
+            if safe_score is None:
+                continue
+            direction = "accumulation" if safe_score > 0 else "distribution"
             signals.append(
                 {
                     "date": as_of.isoformat(),
@@ -145,11 +164,71 @@ def compute_active_rate_signals(
                     "window_days": window,
                     "etf_count": len(etfs),
                     "etf_tickers": etfs,
-                    "score": abs(score),
-                    "strength": strength_from_score(abs(score), p95),
-                    "metadata": {"active_rate": score},
+                    "score": abs(safe_score),
+                    "strength": strength_from_score(abs(safe_score), p95),
+                    "metadata": {"active_rate": safe_score},
                 }
             )
+    return signals
+
+
+def compute_diff_consensus_signals(conn, as_of: date) -> list[dict[str, Any]]:
+    """Same-day multi-ETF weight_up / weight_down / removed → consensus."""
+    rows = fetch_all(
+        conn,
+        """
+        SELECT d.*, u.strategy_type
+        FROM holdings_diff d
+        INNER JOIN etf_universe u ON u.ticker = d.etf_ticker
+        WHERE d.date = %s
+          AND u.strategy_type IN ('active', 'theme')
+          AND d.change_type IN ('weight_up', 'weight_down', 'removed')
+        """,
+        [as_of.isoformat()],
+    )
+    if not rows:
+        return []
+
+    buckets: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if not is_trackable_stock(str(row["stock_code"]), row.get("stock_name")):
+            continue
+        change_type = row["change_type"]
+        if change_type == "weight_up":
+            direction = "accumulation"
+        elif change_type in ("weight_down", "removed"):
+            direction = "distribution"
+        else:
+            continue
+        key = (row["stock_code"], row.get("stock_name") or row["stock_code"], direction)
+        buckets[key].append(row)
+
+    signals: list[dict[str, Any]] = []
+    for (stock_code, stock_name, direction), group in buckets.items():
+        etfs = list(dict.fromkeys(r["etf_ticker"] for r in group))
+        if len(etfs) < 2:
+            continue
+        deltas = [
+            abs(float(r["weight_delta"]))
+            for r in group
+            if r.get("weight_delta") is not None and float(r["weight_delta"]) != 0
+        ]
+        score = float(np.mean(deltas)) if deltas else float(len(etfs))
+        signals.append(
+            {
+                "date": as_of.isoformat(),
+                "stock_code": stock_code,
+                "stock_name": stock_name,
+                "signal_type": "consensus",
+                "direction": direction,
+                "window_days": 1,
+                "etf_count": len(etfs),
+                "etf_tickers": etfs,
+                "score": score,
+                "strength": "strong" if len(etfs) >= 3 else "moderate" if len(etfs) == 2 else "weak",
+                "metadata": {"source": "holdings_diff"},
+            }
+        )
     return signals
 
 
@@ -166,6 +245,8 @@ def compute_new_entry_signals(conn, as_of: date) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in entries:
         if row["etf_ticker"] not in theme_active:
+            continue
+        if not is_trackable_stock(str(row["stock_code"]), row.get("stock_name")):
             continue
         grouped[row["stock_code"]].append(row)
 
@@ -185,7 +266,7 @@ def compute_new_entry_signals(conn, as_of: date) -> list[dict[str, Any]]:
                 "etf_tickers": etfs,
                 "score": float(len(etfs)),
                 "strength": "strong" if len(etfs) >= 3 else "moderate" if len(etfs) == 2 else "weak",
-                "metadata": {"entries": rows},
+                "metadata": {"entry_count": len(etfs)},
             }
         )
     return signals
@@ -246,6 +327,7 @@ def main() -> None:
         universe = load_universe(conn)
 
         signals = compute_new_entry_signals(conn, as_of)
+        signals.extend(compute_diff_consensus_signals(conn, as_of))
         signals.extend(compute_active_rate_signals(holdings, meta, universe, as_of))
 
         count = upsert_signals(conn, signals)

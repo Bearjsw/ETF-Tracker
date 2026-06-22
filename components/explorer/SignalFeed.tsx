@@ -1,59 +1,36 @@
-import Link from "next/link";
-import type { SignalDaily } from "@/lib/types";
-import { formatNumber } from "@/lib/utils";
+import { SignalCard } from "@/components/explorer/SignalCard";
+import type { EtfNameLookup, SignalDaily } from "@/lib/types";
 
 type Props = {
   signals: SignalDaily[];
+  etfMap?: EtfNameLookup;
 };
 
-function signalLabel(type: string) {
-  switch (type) {
-    case "new_entry":
-      return "신규편입";
-    case "consensus":
-      return "합의";
-    default:
-      return type;
-  }
-}
-
-export function SignalFeed({ signals }: Props) {
+export function SignalFeed({ signals, etfMap }: Props) {
   if (!signals.length) {
-    return <div className="card text-[var(--muted)]">시그널이 없습니다. holdings diff 후 compute_signals를 실행하세요.</div>;
+    return (
+      <div className="card">
+        <p className="text-sm text-[var(--muted)]">
+          시그널이 없습니다. 데이터 파이프라인을 실행하면 액티브 ETF들의 합의 매집·신규편입 패턴이 여기에 표시됩니다.
+        </p>
+        <p className="mt-3 text-xs text-[var(--muted-foreground)]">
+          <code className="code-inline">collect_daily.py</code> →{" "}
+          <code className="code-inline">compute_holdings_diff.py</code> →{" "}
+          <code className="code-inline">compute_signals.py</code>
+        </p>
+      </div>
+    );
   }
 
   return (
-    <div className="card overflow-x-auto">
-      <table>
-        <thead>
-          <tr>
-            <th>날짜</th>
-            <th>종목</th>
-            <th>유형</th>
-            <th>방향</th>
-            <th>ETF수</th>
-            <th>강도</th>
-            <th>점수</th>
-          </tr>
-        </thead>
-        <tbody>
-          {signals.map((signal) => (
-            <tr key={`${signal.date}-${signal.stock_code}-${signal.signal_type}-${signal.window_days}`}>
-              <td>{signal.date}</td>
-              <td>
-                <Link href={`/stocks/${signal.stock_code}`} className="text-[var(--accent)]">
-                  {signal.stock_name ?? signal.stock_code}
-                </Link>
-              </td>
-              <td>{signalLabel(signal.signal_type)}</td>
-              <td>{signal.direction === "accumulation" ? "매집" : "매도"}</td>
-              <td>{signal.etf_count}</td>
-              <td>{signal.strength ?? "-"}</td>
-              <td>{formatNumber(signal.score, 3)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      {signals.map((signal) => (
+        <SignalCard
+          key={`${signal.date}-${signal.stock_code}-${signal.signal_type}-${signal.window_days}`}
+          signal={signal}
+          etfMap={etfMap}
+        />
+      ))}
     </div>
   );
 }

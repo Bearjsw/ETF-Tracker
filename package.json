@@ -4,9 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:turbo": "next dev --turbo",
+    "dev:clean": "node scripts/clean-dev.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync-logos": "python scripts/sync_logos.py",
+    "gen-stock-universe": "python scripts/gen_stock_universe_maps.py"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
@@ -14,6 +18,7 @@
     "next": "^15.2.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "recharts": "^3.8.1",
     "tailwind-merge": "^3.0.2"
   },
   "devDependencies": {
