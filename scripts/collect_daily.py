@@ -6,7 +6,9 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,7 @@ load_dotenv(os.path.join(ROOT, ".env"))
 CHECKPOINT_DIR = Path(ROOT) / "scripts" / ".checkpoints"
 UPSERT_CHUNK = 150
 DB_RETRIES = 3
+DEFAULT_WORKERS = 8
 
 
 def normalize_pykrx_ticker(ticker: str) -> str:
@@ -284,6 +287,30 @@ def persist_etf(as_of: date, ticker: str, holdings: list[dict[str, Any]], meta: 
     raise last_error
 
 
+def process_one(ticker: str, as_of: date) -> dict[str, Any]:
+    """Fetch + persist a single ETF. Network/DB only — no shared state."""
+    try:
+        holdings, portfolio_df, snap_date = fetch_holdings(ticker, as_of)
+        if not holdings:
+            return {"ticker": ticker, "status": "skip"}
+
+        meta_date = snap_date or as_of
+        with get_connection() as conn:
+            baseline_aum, baseline_nav = load_meta_baseline(conn, ticker, meta_date)
+        meta = fetch_meta(
+            ticker,
+            meta_date,
+            portfolio_df=portfolio_df,
+            holdings=holdings,
+            baseline_aum=baseline_aum,
+            baseline_nav=baseline_nav,
+        )
+        count = persist_etf(as_of, ticker, holdings, meta)
+        return {"ticker": ticker, "status": "ok", "count": count}
+    except Exception as exc:  # noqa: BLE001
+        return {"ticker": ticker, "status": "fail", "error": str(exc)}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Collect ETF holdings via pykrx")
     parser.add_argument("--date", type=str, default=date.today().isoformat())
@@ -293,6 +320,12 @@ def main() -> None:
         "--force",
         action="store_true",
         help="Re-fetch ETFs already saved for this date (default: skip saved)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help=f"Concurrent fetch threads (default {DEFAULT_WORKERS}, 1=sequential)",
     )
     args = parser.parse_args()
 
@@ -305,54 +338,56 @@ def main() -> None:
     with get_connection() as conn:
         etfs = get_target_etfs(conn, args.tickers, args.limit)
 
-    if saved_tickers:
-        print(f"Resume: {len(saved_tickers)} ETFs already in DB for {as_of}, skipping those")
+    pending = [e for e in etfs if args.force or e["ticker"] not in saved_tickers]
+    skipped_resume = len(etfs) - len(pending)
+    if skipped_resume:
+        print(f"Resume: {skipped_resume} ETFs already in DB for {as_of}, skipping those")
 
-    print(f"Collecting holdings for {len(etfs)} ETFs on {as_of} (save after each ETF)")
+    workers = max(1, args.workers)
+    total = len(pending)
+    print(f"Collecting {total} ETFs on {as_of} with {workers} worker(s)")
+
     ok_count = len(results["ok"])
+    done = 0
+    lock = threading.Lock()
 
-    for i, etf in enumerate(etfs, start=1):
-        ticker = etf["ticker"]
-        if not args.force and ticker in saved_tickers:
-            if i % 50 == 0 or i == len(etfs):
-                print(f"RESUME skip {ticker} ({i}/{len(etfs)})")
-            continue
-
-        try:
-            holdings, portfolio_df, snap_date = fetch_holdings(ticker, as_of)
-            if not holdings:
-                results["skipped"] = [s for s in results["skipped"] if s != ticker]
-                results["skipped"].append(ticker)
-                save_checkpoint(as_of, results)
-                print(f"SKIP {ticker}: no holdings ({i}/{len(etfs)})")
-                continue
-
-            meta_date = snap_date or as_of
-            with get_connection() as conn:
-                baseline_aum, baseline_nav = load_meta_baseline(conn, ticker, meta_date)
-            meta = fetch_meta(
-                ticker,
-                meta_date,
-                portfolio_df=portfolio_df,
-                holdings=holdings,
-                baseline_aum=baseline_aum,
-                baseline_nav=baseline_nav,
-            )
-            count = persist_etf(as_of, ticker, holdings, meta)
+    def record(res: dict[str, Any]) -> None:
+        nonlocal ok_count, done
+        ticker = res["ticker"]
+        status = res["status"]
+        done += 1
+        if status == "ok":
             results["failed"] = [f for f in results["failed"] if f.get("ticker") != ticker]
             results["ok"] = [o for o in results["ok"] if o.get("ticker") != ticker]
-            results["ok"].append({"ticker": ticker, "holdings": count})
-            save_checkpoint(as_of, results)
-            saved_tickers.add(ticker)
+            results["ok"].append({"ticker": ticker, "holdings": res["count"]})
             ok_count += 1
-            print(f"OK {ticker}: {count} holdings saved ({i}/{len(etfs)}, total {ok_count})")
-        except Exception as exc:  # noqa: BLE001
+            print(f"OK {ticker}: {res['count']} holdings saved ({done}/{total}, total {ok_count})")
+        elif status == "skip":
+            results["skipped"] = [s for s in results["skipped"] if s != ticker]
+            results["skipped"].append(ticker)
+            print(f"SKIP {ticker}: no holdings ({done}/{total})")
+        else:
             results["failed"] = [f for f in results["failed"] if f.get("ticker") != ticker]
-            results["failed"].append({"ticker": ticker, "error": str(exc)})
+            results["failed"].append({"ticker": ticker, "error": res["error"]})
+            print(f"FAIL {ticker}: {res['error']} ({done}/{total})")
+        if done % 10 == 0 or done == total:
             save_checkpoint(as_of, results)
-            print(f"FAIL {ticker}: {exc} ({i}/{len(etfs)})")
 
-    print(results)
+    if workers == 1:
+        for etf in pending:
+            record(process_one(etf["ticker"], as_of))
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(process_one, etf["ticker"], as_of): etf["ticker"]
+                for etf in pending
+            }
+            for future in as_completed(futures):
+                res = future.result()
+                with lock:
+                    record(res)
+
+    save_checkpoint(as_of, results)
     print(f"Checkpoint: {checkpoint_path(as_of)}")
     if results["failed"] and not results["ok"]:
         raise SystemExit(1)
