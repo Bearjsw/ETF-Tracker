@@ -1350,6 +1350,76 @@ tbody tr:hover {
   background: var(--background);
 }
 
+.sidebar-credit {
+  margin-top: 0.75rem;
+  padding: 0.875rem 0.75rem 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sidebar-credit__sources {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.sidebar-credit__maker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.sidebar-credit__by {
+  font-size: 0.5625rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidebar-credit__name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--accent);
+}
+
+.sidebar-credit__links {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.sidebar-credit__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-subtle);
+  color: var(--muted);
+  background: var(--card);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.sidebar-credit__icon:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+}
+
+.sidebar-credit__icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
 .app-sidebar {
   width: 220px;
   flex-shrink: 0;
