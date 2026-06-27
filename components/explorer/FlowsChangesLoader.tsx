@@ -1,5 +1,5 @@
 import { FlowsChangeFeedSection } from "@/components/explorer/FlowsChangeFeedSection";
-import { fetchRecentChangesEnriched, fetchStockPriceSparklinesByRef } from "@/lib/db/queries";
+import { fetchFlowsPageChangesEnriched, fetchStockPriceSparklinesByRef } from "@/lib/db/queries";
 import { dedupeStockRefs } from "@/lib/stock-ref";
 
 type Props = {
@@ -7,11 +7,11 @@ type Props = {
 };
 
 export async function FlowsChangesLoader({ manager }: Props) {
-  const changes = await fetchRecentChangesEnriched(manager, 120, true);
+  const changes = await fetchFlowsPageChangesEnriched(manager, true);
   const priceRefs = dedupeStockRefs(
-    changes.slice(0, 48).map((c) => ({ stock_code: c.stock_code, stock_name: c.stock_name })),
+    changes.map((c) => ({ stock_code: c.stock_code, stock_name: c.stock_name })),
   );
-  const priceByStock = await fetchStockPriceSparklinesByRef(priceRefs, 90, { maxYahooFetches: 12 });
+  const priceByStock = await fetchStockPriceSparklinesByRef(priceRefs, 90, { maxYahooFetches: 24 });
 
   return <FlowsChangeFeedSection changes={changes} priceByStock={priceByStock} />;
 }

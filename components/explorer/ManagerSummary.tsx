@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { EtfUniverse, HoldingDiff } from "@/lib/types";
+import { formatManagerDisplay } from "@/lib/managers";
 import { HoldingsDiffTimeline } from "@/components/explorer/HoldingsDiffTimeline";
 import { EtfList } from "@/components/explorer/EtfList";
 import type { EtfListItem } from "@/lib/types";
@@ -19,7 +20,7 @@ export function ManagerSummary({ manager, etfs, diffs }: Props) {
   return (
     <div className="space-y-6">
       <div className="card">
-        <h1 className="text-2xl font-semibold">{manager}</h1>
+        <h1 className="page-title">{formatManagerDisplay(manager)}</h1>
         <p className="mt-2 text-[var(--muted)]">소속 ETF {etfs.length}개</p>
       </div>
       <EtfList etfs={listItems} />

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -132,6 +133,9 @@ def main() -> None:
     print(f"Missing logo: {len(missing)}")
     for c, code, name, ticker in missing[:50]:
         print(f"  {c:5d}  {code}  {name!r}  ticker={ticker}")
+
+    if missing and os.environ.get("STRICT_LOGO_AUDIT") == "1":
+        sys.exit(1)
 
 
 if __name__ == "__main__":

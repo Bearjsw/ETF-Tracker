@@ -8,7 +8,7 @@ import { StockPriceSparkline } from "@/components/explorer/StockPriceSparkline";
 import type { StockFlowSort, StockFlowSummary, StockPricePoint } from "@/lib/types";
 import type { ReturnPeriod } from "@/lib/types";
 import { canShowStockPriceChart } from "@/lib/bond-issuer";
-import { periodToDays } from "@/lib/rankings";
+import { isIntradayPeriod, periodToDays } from "@/lib/rankings";
 import { stockRefKey } from "@/lib/stock-ref";
 import { formatKrw, formatPercent } from "@/lib/utils";
 
@@ -76,6 +76,9 @@ export function StockFlowCard({
   const metric = highlightMetric(flow, sort);
   const isPositive = flow.net_flow_krw >= 0;
   const showPriceChart = canShowStockPriceChart(flow.stock_name, flow.stock_code);
+  // 1일·1주: 장중 데이터는 스파크라인이 자체 처리하고, 일별 폴백은 쿼리에서 이미
+  // 짧은 창으로 잘려 오므로 추가 트리밍을 끈다(2포인트 직선 방지).
+  const sparkPeriodDays = isIntradayPeriod(period) ? undefined : periodToDays(period);
 
   if (variant === "grid") {
     return (
@@ -102,7 +105,7 @@ export function StockFlowCard({
               stockCode={flow.stock_code}
               fullWidth
               showPerf
-              periodDays={periodToDays(period)}
+              periodDays={sparkPeriodDays}
               hideWhenEmpty
             />
           </Link>
@@ -169,7 +172,7 @@ export function StockFlowCard({
                 data={priceData}
                 stockCode={flow.stock_code}
                 showPerf
-                periodDays={periodToDays(period)}
+                periodDays={sparkPeriodDays}
                 hideWhenEmpty
               />
             </Link>

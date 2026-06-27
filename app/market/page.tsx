@@ -34,7 +34,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Searc
       : newListings.items.filter((item) => item.asset_class === category);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="시장"
         description="액티브·테마 ETF 시장 규모, 설정·환매 자금흐름(Δ좌수×NAV), 신규상장을 한곳에서 봅니다."
@@ -42,7 +42,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Searc
 
       <ManagerFilter managers={managers} current={manager} />
 
-      <ActiveMarketOverviewCard overview={overview} manager={manager} />
+      <ActiveMarketOverviewCard overview={overview} manager={manager} listingsHref="#listings" />
 
       <AssetClassFundFlowSection report={fundFlows} manager={manager} />
 

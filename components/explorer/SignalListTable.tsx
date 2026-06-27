@@ -43,10 +43,10 @@ export function SignalListTable({ signals, etfMap }: Props) {
   return (
     <div className="signal-table">
       <div className="signal-table-head">
-        <span>종목</span>
-        <span>참여 운용사</span>
-        <span>합의 강도</span>
-        <span>시그널 기간</span>
+        <span className="signal-table-col signal-table-col--stock">종목</span>
+        <span className="signal-table-col signal-table-col--managers">참여 운용사</span>
+        <span className="signal-table-col signal-table-col--strength signal-table-col--end">합의 강도</span>
+        <span className="signal-table-col signal-table-col--period signal-table-col--end">시그널 기간</span>
       </div>
       {signals.map((signal) => {
         const isUp = signal.direction === "accumulation";
@@ -57,24 +57,30 @@ export function SignalListTable({ signals, etfMap }: Props) {
             href={`/stocks/${signal.stock_code}`}
             className="signal-table-row group"
           >
-            <div className="flex items-start gap-3">
+            <div className="signal-table-col signal-table-col--stock flex min-w-0 items-start gap-3">
               <StockLogo stockName={signal.stock_name} stockCode={signal.stock_code} size={40} variant="circle" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className={`text-sm font-bold ${isUp ? "delta-positive" : "delta-negative"}`}>
                   {isUp ? "▲" : "▼"} {signalTypeLabel(signal.signal_type, signal.direction)}
                 </p>
-                <p className="mt-1 flex flex-wrap items-center gap-1.5 text-base font-semibold underline-offset-2 group-hover:underline">
-                  <StockLabel stockName={signal.stock_name} stockCode={signal.stock_code} />
-                  <AssetClassTag stockName={signal.stock_name} stockCode={signal.stock_code} />
+                <p className="mt-1 flex min-w-0 items-center gap-1.5 text-base font-semibold underline-offset-2 group-hover:underline">
+                  <span className="min-w-0 truncate">
+                    <StockLabel stockName={signal.stock_name} stockCode={signal.stock_code} />
+                  </span>
+                  <AssetClassTag
+                    stockName={signal.stock_name}
+                    stockCode={signal.stock_code}
+                    className="shrink-0"
+                  />
                 </p>
                 <p className="text-xs text-[var(--muted)]">{signal.stock_code}</p>
               </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold">{managers.count}곳 참여</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">{managers.text}</p>
+            <div className="signal-table-col signal-table-col--managers min-w-0">
+              <p className="text-sm font-semibold tabular-nums">{managers.count}곳</p>
+              <p className="signal-table-managers-detail mt-0.5">{managers.text}</p>
             </div>
-            <div className="signal-strength-tags">
+            <div className="signal-table-col signal-table-col--strength signal-table-col--end signal-strength-tags">
               <span className={`strength-badge ${strengthClass(signal.strength)}`}>
                 {strengthLabel(signal.strength)}
               </span>
@@ -82,10 +88,10 @@ export function SignalListTable({ signals, etfMap }: Props) {
                 <span className="consensus-badge">전원 합의</span>
               ) : null}
             </div>
-            <div>
+            <div className="signal-table-col signal-table-col--period signal-table-col--end">
               <p className="text-sm font-semibold tabular-nums">{formatShortDate(signal.date)}</p>
               {signal.window_days > 1 ? (
-                <span className="mt-1 inline-flex rounded-full bg-[#fce8e8] px-2 py-0.5 text-xs font-semibold text-[#b42318]">
+                <span className="signal-table-period-badge mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold">
                   {signal.window_days}일 연속
                 </span>
               ) : null}

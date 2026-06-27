@@ -1,8 +1,9 @@
 import { isListedEquity } from "@/lib/equity-classify";
 import { assetClassLabel, assetClassTone, inferAssetClass } from "@/lib/asset-class";
-import { isDomesticBondEtfName, isPreservedSerialBondName } from "@/lib/bond-display-name";
+import { isDomesticBondEtfName, shouldPreserveBondDisplayName } from "@/lib/bond-display-name";
+import { formatStockDisplayName } from "@/lib/stock-display";
 import { inferStockMarket } from "@/lib/stock-ticker-resolve";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 type Props = {
   stockName?: string | null;
@@ -19,10 +20,15 @@ function equityMarketTone(market: "domestic" | "overseas"): string {
 }
 
 export function AssetClassTag({ stockName, stockCode, className }: Props) {
-  if (isDomesticBondEtfName(stockName) || isPreservedSerialBondName(stockName)) return null;
+  if (isDomesticBondEtfName(stockName)) return null;
 
   const assetClass = inferAssetClass(stockName, stockCode);
   if (assetClass) {
+    if (shouldPreserveBondDisplayName(stockName)) return null;
+    const display = formatStockDisplayName(stockName, stockCode);
+    if (assetClass === "gov_bond" && (display === "국고채" || display === assetClassLabel(assetClass))) {
+      return null;
+    }
     return (
       <span
         className={cn("asset-class-tag", assetClassTone(assetClass), className)}

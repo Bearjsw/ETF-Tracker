@@ -63,6 +63,8 @@ export type PopularStock = {
   etf_count: number;
   avg_weight: number | null;
   max_weight: number | null;
+  /** 최근 1달 주가 수익률 (주식 종목) */
+  price_return_pct?: number | null;
 };
 
 export type EtfListItem = EtfUniverse & {
@@ -148,6 +150,8 @@ export type ManagerWeightSeries = {
 export type StockPricePoint = {
   date: string;
   close: number;
+  /** 장중(intraday) 포인트의 epoch(ms). 일별 종가에는 없음 */
+  t?: number;
 };
 
 export type EtfNavPoint = {

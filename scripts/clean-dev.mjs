@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const nextDir = join(root, ".next");
-const DEV_PORT = 3000;
+const DEV_PORTS = [3000, 3001, 3002];
 
 function killPort(port) {
   if (process.platform === "win32") {
@@ -39,13 +39,17 @@ function killPort(port) {
   }
 }
 
-killPort(DEV_PORT);
+for (const port of DEV_PORTS) {
+  killPort(port);
+}
 
 try {
   rmSync(nextDir, { recursive: true, force: true });
   console.log("Removed .next cache");
-} catch {
-  console.warn("Could not remove .next (may not exist)");
+} catch (err) {
+  console.warn("Could not remove .next — close other Next.js terminals and retry.");
+  console.warn(err instanceof Error ? err.message : err);
+  process.exit(1);
 }
 
 const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";

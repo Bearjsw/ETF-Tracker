@@ -25,7 +25,7 @@ const MANAGER_CANONICAL: [RegExp, string][] = [
   [/교보|kyobo|악사/i, "교보악사자산운용"],
   [/흥국|heungkuk/i, "흥국자산운용"],
   [/현대|hyundai/i, "현대자산운용"],
-  [/\bdb\b|디비자산/i, "DB자산운용"],
+  [/\bdb\b|db asset|디비자산운용|디비자산/i, "DB자산운용"],
   [/^sk\b|에스케이|sk자산/i, "SK자산운용"],
   [/아이엠|im asset|im자산/i, "아이엠자산운용"],
   [/케이씨지아이|kcgi/i, "KCGI자산운용"],

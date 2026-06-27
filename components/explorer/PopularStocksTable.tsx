@@ -2,13 +2,54 @@ import Link from "next/link";
 import { AssetClassTag } from "@/components/explorer/AssetClassTag";
 import { StockLabel } from "@/components/explorer/StockLabel";
 import { StockLogo } from "@/components/explorer/Logo";
+import { isListedEquity } from "@/lib/equity-classify";
 import type { PopularStock } from "@/lib/types";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, formatPercent } from "@/lib/utils";
 
 type Props = {
   stocks: PopularStock[];
   emptyMessage?: string;
 };
+
+function StockNameCell({ stock }: { stock: PopularStock }) {
+  const isEquity = isListedEquity(stock.stock_name, stock.stock_code);
+  const ret = stock.price_return_pct;
+
+  if (isEquity) {
+    return (
+      <div className="min-w-0">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate font-medium text-[var(--accent)]">
+            <StockLabel stockName={stock.stock_name} stockCode={stock.stock_code} />
+          </span>
+          {ret != null ? (
+            <span
+              className={`shrink-0 text-xs font-semibold tabular-nums ${ret >= 0 ? "delta-positive" : "delta-negative"}`}
+            >
+              {formatPercent(ret, 1, true)}
+            </span>
+          ) : (
+            <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">—</span>
+          )}
+        </span>
+        <span className="mt-0.5 block">
+          <AssetClassTag stockName={stock.stock_name} stockCode={stock.stock_code} />
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-w-0">
+      <span className="block font-medium text-[var(--accent)]">
+        <StockLabel stockName={stock.stock_name} stockCode={stock.stock_code} />
+      </span>
+      <span className="mt-0.5 block">
+        <AssetClassTag stockName={stock.stock_name} stockCode={stock.stock_code} />
+      </span>
+    </div>
+  );
+}
 
 export function PopularStocksTable({ stocks, emptyMessage }: Props) {
   if (!stocks.length) {
@@ -47,17 +88,7 @@ export function PopularStocksTable({ stocks, emptyMessage }: Props) {
                     size={44}
                     variant="circle"
                   />
-                  <div className="min-w-0">
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      <StockLabel
-                        stockName={stock.stock_name}
-                        stockCode={stock.stock_code}
-                        className="font-medium text-[var(--accent)]"
-                      />
-                      <AssetClassTag stockName={stock.stock_name} stockCode={stock.stock_code} />
-                    </span>
-                    <span className="text-xs text-[var(--muted)]">{stock.stock_code}</span>
-                  </div>
+                  <StockNameCell stock={stock} />
                 </Link>
               </td>
               <td className="popular-stocks-table__etf-count">

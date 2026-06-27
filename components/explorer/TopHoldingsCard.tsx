@@ -14,13 +14,15 @@ import { formatNumber } from "@/lib/utils";
 
 const DEFAULT_VISIBLE = 5;
 const LOAD_MORE_SIZE = 10;
+const DEFAULT_LOGO_SIZE = 48;
 
 type Props = {
   holdings: HoldingDaily[];
   etfName: string;
+  logoSize?: number;
 };
 
-export function TopHoldingsCard({ holdings, etfName }: Props) {
+export function TopHoldingsCard({ holdings, etfName, logoSize = DEFAULT_LOGO_SIZE }: Props) {
   const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE);
   const allRows = useMemo(() => latestHoldingsSorted(holdings), [holdings]);
   const latestDate = allRows[0]?.date;
@@ -62,7 +64,12 @@ export function TopHoldingsCard({ holdings, etfName }: Props) {
               <span className="w-5 shrink-0 text-center text-xs font-semibold text-[var(--muted)]">
                 {index + 1}
               </span>
-              <StockLogo stockName={row.stock_name} stockCode={row.stock_code} size={48} variant="circle" imageFill="78%" />
+              <StockLogo
+                stockName={row.stock_name}
+                stockCode={row.stock_code}
+                size={logoSize}
+                variant="circle"
+              />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                   <Link

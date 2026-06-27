@@ -5,7 +5,8 @@ import {
   getManagerLogoCandidates,
   getStockLogoCandidates,
 } from "@/lib/logos";
-import { cn } from "@/lib/utils";
+import { formatStockDisplayName } from "@/lib/stock-display";
+import { cn } from "@/lib/cn";
 
 type LogoVariant = "plain" | "circle" | "framed";
 
@@ -141,7 +142,7 @@ export function StockLogo({
     [stockName, stockCode],
   );
   const { src, onError } = useLogoSrc(candidates);
-  const label = alt ?? stockName ?? stockCode ?? "종목";
+  const label = alt ?? formatStockDisplayName(stockName, stockCode) ?? stockCode ?? "종목";
 
   return (
     <LogoFrame

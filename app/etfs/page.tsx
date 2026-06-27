@@ -30,7 +30,7 @@ export default async function EtfsPage({ searchParams }: { searchParams: SearchP
   const ranked = await fetchEtfReturnRankings(filters, period, 50);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="액티브 ETF"
         description="시장 종가 기준 수익률 순위입니다. 1일·1주·1달·3달·1년 전 대비 ETF 수익률을 비교할 수 있습니다."

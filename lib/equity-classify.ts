@@ -8,7 +8,7 @@ import { isDomesticCommodityEtfName } from "@/lib/domestic-etf-product";
 
 /** ETF 보유 스냅샷에서 주식이 아닌 것 (CD·스왑·선물·머니마켓·채권형 상품 등) */
 const NON_EQUITY_NAME_RE =
-  /설정현금|머니마켓|MMF|원화현금|원화$|양도성예금|예금증서|전자어음|전자단기|단기사채|전자단기사채|스왑|SWAP|TRS|총수익|국채\s*F\s*\d|\d+년\s*국채\s*F|국채선물|선물\d|\(CP\)|\(CP |CP\)|\(CD\)|\(CD |CD\)|\bCD\b|채권\d{3,}|사채\d|Debenture|Commercial Paper|\(단\)|\(할\)|\d{8}-\d+-\d+\((?:단|할)\)|(?:증권|투자증권|금융투자)\s*\d{8}-|^(?:T|SP)\s+\d[\d\s/%-]+\d{1,2}\/\d{1,2}\/\d{2,4}|\bETF\s*$|전단채|단기채플러스|\sF\s+\d{6}\s*$|TOP\s+\d+\s+F\s+\d{6}/i;
+  /설정현금|머니마켓|MMF|원화현금|원화$|양도성예금|예금증서|전자어음|전자단기|단기사채|전자단기사채|스왑|SWAP|TRS|총수익|국채\s*F\s*\d|\d+년\s*국채\s*F|국채선물|선물\d|\(CP\)|\(CP |CP\)|\(CD\)|\(CD |CD\)|\bCD\b|채권\d{3,}|사채\d|Debenture|Commercial Paper|\(단\)|\(할\)|\d{8}-\d+-\d+\((?:단|할)\)|(?:증권|투자증권|금융투자)\s*\d{8}-|^(?:T|SP)\s+\d[\d\s/%-]+\d{1,2}\/\d{1,2}\/\d{2,4}|\bETF\s*$|전단채|단기채플러스|\sF\s+\d{6}\s*$|TOP\s+\d+\s+F\s+\d{6}|통화안정증권|자금부/i;
 
 /** KODEX/TIGER 등 이름의 채권·머니마켓형 상장상품 (KRX 리스트에 포함되어도 주식 아님) */
 const LISTED_BOND_PRODUCT_RE =

@@ -19,6 +19,7 @@ import {
   fetchStockPriceSparklinesByRef,
 } from "@/lib/db/queries";
 import { parseReturnPeriod, parseStockFlowSort } from "@/lib/rankings";
+import { REBALANCE_FLOW_FOOTNOTE } from "@/lib/est-flow";
 import { formatKrw, formatStatsPeriod } from "@/lib/utils";
 
 type SearchParams = Promise<{ manager?: string; sort?: string; period?: string }>;
@@ -50,10 +51,10 @@ export default async function HomePage({ searchParams }: { searchParams: SearchP
   ]);
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
+    <div className="space-y-6">
+      <section className="space-y-2.5">
         <p className="text-label">액티브 ETF 비중 추적</p>
-        <h1 className="text-display max-w-xl">
+        <h1 className="page-hero max-w-xl">
           비중이 바뀐 만큼,
           <br />
           <span className="rounded-md bg-[var(--accent-bright)] px-1.5">수익이 따라왔는지</span> 확인하세요
@@ -61,7 +62,7 @@ export default async function HomePage({ searchParams }: { searchParams: SearchP
         <p className="max-w-xl text-sm leading-relaxed text-[var(--muted)]">
           시장 규모·자금흐름, 종목 look-through 비중 변화, 시그널을 각각 나눠 추적합니다.
         </p>
-        <div className="flex flex-wrap gap-3 pt-2">
+        <div className="flex flex-wrap gap-2 pt-1">
           <Link href="/market" className="btn-primary">
             시장
           </Link>
@@ -81,13 +82,13 @@ export default async function HomePage({ searchParams }: { searchParams: SearchP
         <StatCard
           label="순매수 추정"
           value={formatKrw(stats.accumulationFlow)}
-          sub={`최근 ${stats.windowDays ?? 3}일 · 비중 확대·신규편입`}
+          sub={`최근 ${stats.windowDays ?? 3}일 · ${REBALANCE_FLOW_FOOTNOTE}`}
           trend="positive"
         />
         <StatCard
           label="순매도 추정"
           value={formatKrw(stats.distributionFlow)}
-          sub={`최근 ${stats.windowDays ?? 3}일 · 비중 축소·제외`}
+          sub={`최근 ${stats.windowDays ?? 3}일 · ${REBALANCE_FLOW_FOOTNOTE}`}
           trend="negative"
         />
         <StatCard

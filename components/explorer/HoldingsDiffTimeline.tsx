@@ -9,6 +9,7 @@ import { StockLabel } from "@/components/explorer/StockLabel";
 import { Pagination } from "@/components/ui/Pagination";
 import {
   changeTypeBadgeClass,
+  changeTypeDeltaClass,
   changeTypeLabel,
   formatKrw,
   formatNumber,
@@ -88,6 +89,7 @@ export function HoldingsDiffTimeline({
               const enriched = diff as HoldingDiffEnriched;
               const accumulating = isAccumulation(diff.change_type, diff.weight_delta);
               const perf = enriched.return_since_change;
+              const changeTone = changeTypeDeltaClass(diff.change_type, diff.weight_delta);
 
               return (
                 <tr key={`${diff.date}-${diff.etf_ticker}-${diff.stock_code}-${diff.change_type}`}>
@@ -121,14 +123,13 @@ export function HoldingsDiffTimeline({
                       weightCurr={diff.weight_curr}
                       showRelative
                       size="sm"
+                      toneClass={changeTone}
                     />
                   </td>
                   <td className="timeline-num text-[var(--muted)]">
                     {formatNumber(diff.weight_prev, 1)}→{formatNumber(diff.weight_curr, 1)}%
                   </td>
-                  <td
-                    className={`timeline-num font-medium ${accumulating ? "delta-positive" : "delta-negative"}`}
-                  >
+                  <td className={`timeline-num font-medium ${changeTone}`}>
                     {accumulating ? "+" : "−"}
                     {formatKrw(Math.abs(diff.est_flow_krw ?? 0))}
                   </td>

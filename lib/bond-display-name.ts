@@ -13,7 +13,32 @@ const MAX_LABEL_LEN = 12;
 /** 국내 채권 ETF — 브랜드+상품 유형 구분을 위해 여유 있게 */
 const ETF_LABEL_LEN = 24;
 /** 통안채·공사채·CP 등 일련번호가 있는 개별 채권 */
-const PRESERVED_BOND_MAX_LEN = 40;
+const PRESERVED_BOND_MAX_LEN = 48;
+
+/** KRX 원문 종목명 유지 (자금부·국고채권·CP 일련번호 등) */
+export function shouldPreserveBondDisplayName(name?: string | null): boolean {
+  const trimmed = name?.trim();
+  if (!trimmed || trimmed.length > PRESERVED_BOND_MAX_LEN) return false;
+
+  if (/^[\uAC00-\uD7A3A-Za-z0-9]+(?:공사|전력|가스|철도|도로|항공|마사|개발|금융)?채권\d+$/.test(trimmed)) {
+    return true;
+  }
+  if (/^[\uAC00-\uD7A3]+금융채권/.test(trimmed)) return true;
+  if (/[\uAC00-\uD7A3].*\d{8}-\d+-\d+\((?:단|할)\)/.test(trimmed)) return true;
+  if (/^국고\d+-/.test(trimmed) || /^국고채권\d+/.test(trimmed)) return true;
+  if (/^물가연동국고/.test(trimmed)) return true;
+  if (/^국고채(?:이자|원금)?분리/.test(trimmed)) return true;
+  if (/^[\uAC00-\uD7A3]+(?:\s+[\uAC00-\uD7A3]+)?\s+자금부\s+\d{8}/.test(trimmed)) return true;
+  if (/^[\uAC00-\uD7A3]+(?:은행|증권|금융투자)?\s+RP\s+\d{8}/i.test(trimmed)) return true;
+  if (/^[\uAC00-\uD7A3]/.test(trimmed) && /\d{8}-\d+-\d+/.test(trimmed)) return true;
+
+  return false;
+}
+
+/** @deprecated shouldPreserveBondDisplayName 사용 */
+export function isPreservedSerialBondName(name?: string | null): boolean {
+  return shouldPreserveBondDisplayName(name);
+}
 
 const DOMESTIC_BOND_ETF_BRANDS =
   "KODEX|TIGER|ARIRANG|RISE|SOL|ACE|HANARO|PLUS|1Q|KOSEF|KIWOOM|WON|TIMEFOLIO|KOACT";
@@ -29,23 +54,6 @@ export function isDomesticBondEtfName(name?: string | null): boolean {
   const m = name?.trim().match(DOMESTIC_BOND_ETF_RE);
   if (!m) return false;
   return DOMESTIC_BOND_ETF_REST_RE.test(m[2]);
-}
-
-/** 통안채·공사채권·CP 등 일련번호로 구분되는 개별 채권 — 원문 유지 */
-export function isPreservedSerialBondName(name?: string | null): boolean {
-  const trimmed = name?.trim();
-  if (!trimmed || trimmed.length > PRESERVED_BOND_MAX_LEN) return false;
-
-  if (/^통화안정증권\d+-\d+-\d+/.test(trimmed)) return true;
-  if (/^[\uAC00-\uD7A3A-Za-z0-9]+(?:공사|전력|가스|철도|도로|항공|마사|개발|금융)?채권\d+$/.test(trimmed)) {
-    return true;
-  }
-  // 산업·농업·수산·증권금융채권 등 정책금융·기관 금융채
-  if (/^[\uAC00-\uD7A3]+금융채권/.test(trimmed)) return true;
-  if (/[\uAC00-\uD7A3].*\d{8}-\d+-\d+\((?:단|할)\)/.test(trimmed)) return true;
-  if (/^국고\d+-/.test(trimmed) || /^국고채권\d+/.test(trimmed)) return true;
-
-  return false;
 }
 
 function extractCreditGrade(rest: string): string | null {
@@ -87,15 +95,30 @@ function maturityYearSuffix(fullYear: number): string {
   return String(fullYear % 100).padStart(2, "0");
 }
 
-/** T 4 5/8 05/15/54, KOREAT 4 1/8 02/02/28, KOROIL 3 3/8 03/27/27 */
+/** T 4 5/8 05/15/54 — 미국 국채만 (KOREAT·KOROIL 등 한국 발행 해외상장채 제외) */
 function formatUsTreasury(name: string): string | null {
   const trimmed = name.trim();
-  if (!isOverseasListedBondName(trimmed)) return null;
+  if (!/^(?:T|SP)\s+[\d\s./%-]+\d{1,2}\/\d{1,2}\/\d{2,4}/i.test(trimmed)) return null;
 
   const year = parseMaturityYearFromDate(trimmed);
   if (!year) return trimLabel("미국 국채");
 
   return trimLabel(`미국 국채 ${maturityYearSuffix(year)}년 만기`);
+}
+
+/** KOREAT 4 1/8 02/02/28, KOROIL 3 3/8 03/27/27 — 한국 발행 해외상장채 */
+function formatKoreanOverseasListedBond(name: string): string | null {
+  const m = name.trim().match(/^(KOREAT|KORWAT|KOROIL)\s+/i);
+  if (!m) return null;
+
+  const year = parseMaturityYearFromDate(name);
+  const yearLabel = year ? `${maturityYearSuffix(year)}년` : null;
+
+  if (/^KOROIL/i.test(m[1])) {
+    return trimLabel(yearLabel ? `한국석유 회사채 ${yearLabel}` : "한국석유 회사채", ETF_LABEL_LEN);
+  }
+
+  return trimLabel(yearLabel ? `한국 국채 ${yearLabel} 만기` : "한국 국채", ETF_LABEL_LEN);
 }
 
 /** WMT 4.35 04/28/30, LMT 4.15 06/15/53 */
@@ -130,8 +153,32 @@ function formatKrBankSerialBond(name: string): string | null {
   return trimLabel(yymm ? `${issuer} ${yymm} 금융채` : `${issuer} 금융채`, ETF_LABEL_LEN);
 }
 
+/** 통화안정증권02280-2607-01 → 통안채 26.07 */
+function formatMonetaryStabilizationBond(name: string): string | null {
+  const trimmed = name.trim();
+  const serial = trimmed.match(/^통화안정증권\d+-(\d{2})(\d{2})-\d+/);
+  if (serial) return trimLabel(`통안채 ${serial[1]}.${serial[2]}`);
+  if (/^통화안정증권/.test(trimmed)) return trimLabel("통안채");
+  return null;
+}
+
+/** 신한 자금부 20260219-365-1, KB은행 RP 20260219-1-1 등 — 원문은 shouldPreserveBondDisplayName에서 유지 */
+function formatKrMoneyMarketInstrument(name: string): string | null {
+  const trimmed = name.trim();
+
+  const rp = trimmed.match(/^([\uAC00-\uD7A3]+(?:은행|증권|금융투자)?)\s+RP(?:\s+\d{8}-\d+-\d+.*)?$/i);
+  if (rp && !/\d{8}-\d+-\d+/.test(trimmed)) {
+    return trimLabel(`${formatBondIssuerDisplayName(rp[1])} RP`);
+  }
+
+  return null;
+}
+
 /** 국고채권03875-2612(23-10), 물가연동국고…(18-5), 국고02500-3009 */
 function formatKrGovBond(name: string): string | null {
+  const monetary = formatMonetaryStabilizationBond(name);
+  if (monetary) return monetary;
+
   if (isDomesticBondEtfName(name)) return null;
   const coded = name.match(/^국고\d+-(\d{2})\d{2}$/);
   if (coded) return trimLabel(`국고채 ${coded[1]}년 만기`);
@@ -147,9 +194,9 @@ function formatKrGovBond(name: string): string | null {
     return trimLabel(`국고채 ${series[1]}년 만기`);
   }
 
-  if (/물가연동국고|물가연동\s*국고/.test(name)) return trimLabel("물가연동국채");
+  if (/물가연동국고|물가연동\s*국고/.test(name)) return null;
   if (/통화안정|통안채/.test(name)) return trimLabel("통안채");
-  if (/국고|국채/.test(name)) return trimLabel("국고채");
+  if (/국고|국채/.test(name)) return null;
 
   return null;
 }
@@ -337,6 +384,9 @@ function assetClassFallback(name: string, assetClass: AssetClassId): string {
     case "cp":
       return trimLabel("CP");
     case "gov_bond":
+      if (/[\uAC00-\uD7A3]/.test(name) && name.length <= PRESERVED_BOND_MAX_LEN) {
+        return trimLabel(name, PRESERVED_BOND_MAX_LEN);
+      }
       return trimLabel("국고채");
     case "agency_bond":
       return trimLabel("공사채");
@@ -415,16 +465,22 @@ export function resolveBondDisplayName(
     return { display: original, original, simplified: false };
   }
 
-  if (isPreservedSerialBondName(original)) {
-    return { display: original, original, simplified: false };
+  if (shouldPreserveBondDisplayName(original)) {
+    const display =
+      original.length <= PRESERVED_BOND_MAX_LEN
+        ? original
+        : `${original.slice(0, PRESERVED_BOND_MAX_LEN - 1)}…`;
+    return { display, original, simplified: display !== original };
   }
 
   const assetClass = inferAssetClass(original, stockCode);
 
   const candidates = [
+    formatKrMoneyMarketInstrument(original),
     formatKrBankSerialBond(original),
     formatLiquidity(original),
     formatTrsOrSwap(original),
+    formatKoreanOverseasListedBond(original),
     formatUsTreasury(original),
     formatUsCorporateBond(original),
     formatKrGovBond(original),

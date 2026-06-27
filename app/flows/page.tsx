@@ -16,7 +16,9 @@ import { ManagerFilter } from "@/components/explorer/ManagerFilter";
 import { fetchManagers } from "@/lib/db/queries";
 import { parseReturnPeriod, parseStockFlowSort } from "@/lib/rankings";
 import {
+  normalizeBoardForMarket,
   normalizeCategoryForMarket,
+  parseStockBoard,
   parseStockCategory,
   parseStockMarket,
 } from "@/lib/stock-filters";
@@ -27,6 +29,7 @@ type SearchParams = Promise<{
   period?: string;
   market?: string;
   category?: string;
+  board?: string;
   q?: string;
 }>;
 
@@ -37,6 +40,7 @@ export default async function FlowsPage({ searchParams }: { searchParams: Search
   const period = parseReturnPeriod(params.period);
   const market = parseStockMarket(params.market);
   const category = normalizeCategoryForMarket(market, parseStockCategory(params.category));
+  const board = normalizeBoardForMarket(market, category, parseStockBoard(params.board));
 
   const managers = await fetchManagers();
 
@@ -60,6 +64,7 @@ export default async function FlowsPage({ searchParams }: { searchParams: Search
           period={period}
           market={market}
           category={category}
+          board={board}
           params={params}
         />
       </Suspense>

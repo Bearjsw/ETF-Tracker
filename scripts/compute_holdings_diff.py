@@ -11,6 +11,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from db_client import fetch_all, get_connection, upsert_rows
+from est_flow import resolve_est_flow_krw
 from stock_filter import is_trackable_stock
 
 WEIGHT_THRESHOLD = 0.05
@@ -111,7 +112,6 @@ def compute_diff(
     curr_rows: list[dict[str, Any]],
     as_of: date,
     aum_by_ticker: dict[str, float | None],
-    median_aum: float | None = None,
 ) -> list[dict[str, Any]]:
     prev = index_holdings(prev_rows)
     curr = index_holdings(curr_rows)
@@ -147,10 +147,8 @@ def compute_diff(
 
         est_flow = None
         aum = aum_by_ticker.get(etf_ticker)
-        if aum is None and median_aum is not None:
-            aum = median_aum
-        if aum is not None and weight_delta is not None:
-            est_flow = float(aum) * (float(weight_delta) / 100.0)
+        if weight_delta is not None:
+            est_flow = resolve_est_flow_krw(weight_delta, aum, median_aum=None)
 
         diffs.append(
             {
@@ -184,9 +182,8 @@ def main() -> None:
 
         tickers = sorted({row["etf_ticker"] for row in curr_rows})
         aum_by_ticker = {ticker: load_meta(conn, as_of, ticker) for ticker in tickers}
-        median_aum = load_median_aum(conn)
 
-        diffs = compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker, median_aum)
+        diffs = compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker)
         if diffs:
             upsert_rows(
                 conn,

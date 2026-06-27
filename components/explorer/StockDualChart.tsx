@@ -15,7 +15,8 @@ import {
 } from "recharts";
 import { looksLikeOverseasStockName } from "@/lib/stock-ticker-resolve";
 import type { EtfWeightSeries, StockPricePoint, WeightChartMarker } from "@/lib/types";
-import { cn, formatNumber, formatShortDate, managerChartColor } from "@/lib/utils";
+import { cn } from "@/lib/cn";
+import { formatNumber, formatShortDate, managerChartColor } from "@/lib/utils";
 
 /** 차트 표시 구간 (~1개월 영업일) */
 const CHART_POINT_LIMIT = 22;

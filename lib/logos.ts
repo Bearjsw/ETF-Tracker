@@ -3,6 +3,7 @@ import { isBondLikeAsset, resolveBondIssuerLogo } from "@/lib/bond-issuer";
 import { looksLikeOverseasStockName, resolveStockTickerSymbol } from "@/lib/stock-ticker-resolve";
 import { canResolveTickerLogo, expandTickerLogoPaths } from "@/lib/stock-logo-variants";
 import {
+  isDomesticCommodityEtfName,
   isListedStockCodeProxy,
   resolveDomesticEtfBrandLogo,
 } from "@/lib/domestic-etf-product";
@@ -14,7 +15,8 @@ import { getCountryFlagLogoPath, shouldUseCountryFlagIcon } from "@/lib/stock-co
 
 const STOCK_FALLBACK = "/logos/stock/common_KONEX.svg";
 const STOCK_OVERSEAS_FALLBACK = "/logos/stock/common_ETF_us.svg";
-const MANAGER_FALLBACK = "/logos/financial/증권/SK.svg";
+// 매핑되지 않은 운용사용 중립 placeholder (특정 브랜드 로고를 쓰면 오인됨)
+const MANAGER_FALLBACK = "/logos/financial/_generic.svg";
 
 /** ETF 자산운용사명 → financial 하위 로고 경로 (확장자 제외) */
 const MANAGER_LOGO_MAP: Record<string, string> = {
@@ -102,6 +104,7 @@ const DOMESTIC_NAME_LOGO: Record<string, string> = {
   NC: "stock/엔씨소프트",
   NCSOFT: "stock/엔씨소프트",
   엔씨소프트: "stock/엔씨소프트",
+  "iM금융지주": "stock/iM금융지주",
 };
 
 function normalizeDomesticCode(stockCode?: string | null): string | null {
@@ -122,6 +125,7 @@ function resolveDomesticNameLogo(stockName?: string | null): string | null {
   if (name === "NC" || /^NC\s*SOFT/i.test(name) || name.includes("엔씨소프트")) {
     return DOMESTIC_NAME_LOGO.NC;
   }
+  if (name.startsWith("iM금융지주")) return DOMESTIC_NAME_LOGO["iM금융지주"];
 
   return null;
 }
@@ -163,9 +167,18 @@ function normalizeStockName(name: string) {
   return STOCK_NAME_ALIASES[name] ?? name.trim();
 }
 
+function resolveCommodityEtfLogo(stockName?: string | null): string | null {
+  if (!isDomesticCommodityEtfName(stockName)) return null;
+  if (/금현물|KRX금|골드/i.test(stockName ?? "")) return "/logos/stock/GOLD.svg";
+  return null;
+}
+
 export function getStockLogoCandidates(stockName?: string | null, stockCode?: string | null): string[] {
   const candidates: string[] = [];
   const code = normalizeDomesticCode(stockCode);
+
+  const commodityLogo = resolveCommodityEtfLogo(stockName);
+  if (commodityLogo) candidates.push(commodityLogo);
 
   if (isBondLikeAsset(stockName, code)) {
     const bondLogo = resolveBondIssuerLogo(stockName);

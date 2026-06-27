@@ -1,13 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChangeFeed } from "@/components/explorer/ChangeFeed";
-import { EtfHoldingsPieChart } from "@/components/explorer/EtfHoldingsPieChart";
+import { EtfHoldingsTreemapLoader } from "@/components/explorer/EtfHoldingsTreemapLoader";
 import { EtfPriceChart } from "@/components/explorer/EtfPriceChart";
 import { HoldingsDiffTimeline } from "@/components/explorer/HoldingsDiffTimeline";
-import { TopHoldingsCard } from "@/components/explorer/TopHoldingsCard";
 import { EtfCategoryTag } from "@/components/explorer/EtfCategoryTag";
 import { fetchEtfDetail, fetchEtfNavHistory, fetchStockPriceSparklinesByRef } from "@/lib/db/queries";
-import { formatKrw, strategyLabel } from "@/lib/utils";
+import {
+  enrichChangesWithFlowEstimates,
+  filterDiffsByWindow,
+  REBALANCE_FLOW_FOOTNOTE,
+  REBALANCE_FLOW_WINDOW_DAYS,
+  summarizeFlowTotals,
+} from "@/lib/est-flow";
+import { formatManagerDisplay, managerKey } from "@/lib/managers";
+import { formatKrw, isAccumulation, strategyLabel } from "@/lib/utils";
+import { getLatestHoldingsDate } from "@/lib/holdings";
 
 type Params = Promise<{ ticker: string }>;
 
@@ -19,29 +27,48 @@ export default async function EtfDetailPage({ params }: { params: Params }) {
   ]);
   if (!etf) notFound();
 
-  const priceByStock = await fetchStockPriceSparklinesByRef(
-    diffs.map((d) => ({ stock_code: d.stock_code, stock_name: d.stock_name })),
-    120,
-    { maxYahooFetches: 15 },
+  let priceByStock: Awaited<ReturnType<typeof fetchStockPriceSparklinesByRef>> = {};
+  try {
+    priceByStock = await fetchStockPriceSparklinesByRef(
+      diffs.map((d) => ({ stock_code: d.stock_code, stock_name: d.stock_name })),
+      120,
+      { maxYahooFetches: 15 },
+    );
+  } catch (err) {
+    console.error("[EtfDetailPage] price sparklines", err);
+  }
+
+  const holdingsDate = getLatestHoldingsDate(holdings);
+
+  const enrichedDiffs = (() => {
+    const aumByTicker = new Map<string, number>();
+    if (meta?.aum != null && meta.aum > 0) aumByTicker.set(etf.ticker, meta.aum);
+    return enrichChangesWithFlowEstimates(
+      diffs.map((d) => ({
+        ...d,
+        etf_name: etf.name,
+        manager: etf.manager,
+        strategy_type: etf.strategy_type,
+        return_since_change: (d as { return_since_change?: number }).return_since_change ?? null,
+      })),
+      aumByTicker,
+      meta?.aum ?? 50_000_000_000,
+    );
+  })();
+
+  const windowDiffs = filterDiffsByWindow(enrichedDiffs, REBALANCE_FLOW_WINDOW_DAYS);
+  const { inflow: totalInflow, outflow: totalOutflow } = summarizeFlowTotals(windowDiffs, meta?.aum);
+  const diffStats = enrichedDiffs.reduce(
+    (acc, diff) => {
+      if (isAccumulation(diff.change_type, diff.weight_delta)) acc.up += 1;
+      else acc.down += 1;
+      return acc;
+    },
+    { up: 0, down: 0 },
   );
 
-  const enrichedDiffs = diffs.map((d) => ({
-    ...d,
-    etf_name: etf.name,
-    manager: etf.manager,
-    strategy_type: etf.strategy_type,
-    return_since_change: (d as { return_since_change?: number }).return_since_change ?? null,
-  }));
-
-  const totalInflow = diffs
-    .filter((d) => (d.est_flow_krw ?? 0) > 0)
-    .reduce((s, d) => s + (d.est_flow_krw ?? 0), 0);
-  const totalOutflow = diffs
-    .filter((d) => (d.est_flow_krw ?? 0) < 0)
-    .reduce((s, d) => s + Math.abs(d.est_flow_krw ?? 0), 0);
-
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <section className="card">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -52,11 +79,14 @@ export default async function EtfDetailPage({ params }: { params: Params }) {
               </span>
               <span className="text-xs text-[var(--muted)]">{etf.market ?? "—"}</span>
             </div>
-            <h1 className="text-display mt-2">{etf.name}</h1>
+            <h1 className="page-title mt-2">{etf.name}</h1>
             <p className="mt-1 text-sm text-[var(--muted)]">
               {etf.manager ? (
-                <Link href={`/managers/${encodeURIComponent(etf.manager)}`} className="hover:text-[var(--accent)]">
-                  {etf.manager}
+                <Link
+                  href={`/managers/${encodeURIComponent(managerKey(etf.manager) || etf.manager)}`}
+                  className="hover:text-[var(--accent)]"
+                >
+                  {formatManagerDisplay(etf.manager)}
                 </Link>
               ) : (
                 "운용사 미상"
@@ -75,33 +105,44 @@ export default async function EtfDetailPage({ params }: { params: Params }) {
             </div>
           </div>
         </div>
-        {diffs.length > 0 ? (
-          <div className="mt-4 flex flex-wrap gap-4 pt-4 text-sm">
-            <span className="delta-positive">순매수 추정 {formatKrw(totalInflow)}</span>
-            <span className="delta-negative">순매도 추정 {formatKrw(totalOutflow)}</span>
+        {windowDiffs.length > 0 && (totalInflow > 0 || totalOutflow > 0) ? (
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--border-subtle)] pt-4 text-sm">
+            {totalInflow > 0 ? (
+              <span className="delta-positive">순매수 추정 {formatKrw(totalInflow)}</span>
+            ) : null}
+            {totalOutflow > 0 ? (
+              <span className="delta-negative">순매도 추정 {formatKrw(totalOutflow)}</span>
+            ) : null}
+            <span className="text-xs text-[var(--muted)]">
+              최근 {REBALANCE_FLOW_WINDOW_DAYS}일 · {REBALANCE_FLOW_FOOTNOTE}
+            </span>
           </div>
         ) : null}
       </section>
 
-      <EtfPriceChart ticker={ticker} etfName={etf.name} data={navHistory} />
+      <EtfHoldingsTreemapLoader
+        holdings={holdings}
+        etfName={etf.name}
+        holdingsDate={holdingsDate}
+      />
 
       {enrichedDiffs.length > 0 ? (
         <ChangeFeed
           changes={enrichedDiffs.slice(0, 5)}
           priceByStock={priceByStock}
-          title="최근 비중 변화"
+          title="구성종목 비중 변동"
+          titleStats={diffStats}
           compact
           hideSourceTag
           showSparkline={false}
           logoSize={48}
+          unifiedCard
         />
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <EtfHoldingsPieChart holdings={holdings} etfName={etf.name} />
-        <TopHoldingsCard holdings={holdings} etfName={etf.name} />
-      </div>
       <HoldingsDiffTimeline diffs={enrichedDiffs} title="전체 변화 이력" showEtf={false} />
+
+      <EtfPriceChart ticker={ticker} data={navHistory} />
     </div>
   );
 }

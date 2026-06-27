@@ -1,0 +1,26 @@
+name: Audit Logo Coverage
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Audit logo coverage
+        env:
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          STRICT_LOGO_AUDIT: "1"
+        run: python scripts/audit_logo_coverage.py

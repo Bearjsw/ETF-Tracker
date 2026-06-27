@@ -1,7 +1,7 @@
 "use client";
 
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 type Direction = "up" | "down";
 

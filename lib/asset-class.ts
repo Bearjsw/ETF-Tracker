@@ -29,7 +29,7 @@ const OVERSEAS_BOND_RE =
   /TREASURY|AGGREGATE\s+BOND|INTL\s+.*BOND|CORPORATE\s+BOND|GOVT\s+BOND|US\s+TIP|IBONDS|ZERO\s+CPN|^(?:T|SP|KOREAT|KORWAT|KOROIL)\s+\d[\d\s./%-]+\d{1,2}\/\d{1,2}\/\d{2,4}/i;
 
 const GOV_BOND_RE =
-  /국고채|물가연동국고|통화안정|\d+년\s*국채|\d+년국채|통안채|국채선물|KIS국고|국채액티브|국고채\d|^국고\d+-/i;
+  /국고채|물가연동국고|통화안정|\d+년\s*국채|\d+년국채|통안채|국채선물|KIS국고|국채액티브|국고채\d|^국고\d+-|자금부/i;
 
 const FIN_BOND_RE = /금융채|농업금융채|금융채권|금융캐피탈|금융본부.*채/i;
 
@@ -178,6 +178,26 @@ export function inferAssetClass(
 
   if (/공사\d/.test(name)) return "agency_bond";
   if (/카드\d+-\d+/.test(name)) return "fin_bond";
+
+  if (/[\uAC00-\uD7A3]/.test(name) && !isLikelyEquity(name, stockCode)) {
+    if (/^통화안정증권|자금부|국고채|물가연동|통안/.test(name)) return "gov_bond";
+    if (/금융채권|공사채|전력공사|가스공사|철도|도로공사|인천공항/.test(name)) return "agency_bond";
+    if (/\d{8}-\d+-\d+/.test(name)) {
+      if (/자금부|통화안정|국고|통안/.test(name)) return "gov_bond";
+      if (/은행|증권|금융|캐피탈|카드|보험/.test(name)) {
+        return /\(단\)|\(할\)|할\d|CP/.test(name) ? "cp" : "fin_bond";
+      }
+      if (/공사|전력|가스|철도|도로/.test(name)) return "agency_bond";
+      return "corp_bond";
+    }
+    if (/채권|사채|어음|예금증서|Commercial Paper|Debenture/i.test(name)) {
+      if (/CD|CP|\(단\)|\(할\)|전단|예금|양도성/.test(name)) return "cp";
+      if (/국고|통안|통화안정/.test(name)) return "gov_bond";
+      if (/금융|은행|증권|캐피탈|카드/.test(name)) return "fin_bond";
+      if (/공사|전력|가스|철도/.test(name)) return "agency_bond";
+      return "corp_bond";
+    }
+  }
 
   return null;
 }

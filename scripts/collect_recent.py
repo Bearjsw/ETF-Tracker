@@ -49,27 +49,35 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Collect recent holdings + downstream repairs")
     parser.add_argument("--from", dest="from_date", type=str, default=None)
     parser.add_argument("--to", dest="to_date", type=str, default=None)
+    parser.add_argument(
+        "--dates",
+        type=str,
+        default=None,
+        help="Explicit comma-separated trading days (YYYY-MM-DD); skips business-day inference and holidays",
+    )
     parser.add_argument("--limit", type=int, default=None, help="Max ETFs per day (debug)")
     parser.add_argument("--workers", type=int, default=8, help="Concurrent fetch threads per day")
     parser.add_argument("--skip-prices", action="store_true", help="Skip stock price + NAV collection")
     args = parser.parse_args()
 
-    if args.from_date:
-        start = date.fromisoformat(args.from_date)
+    if args.dates:
+        days = [date.fromisoformat(d.strip()) for d in args.dates.split(",") if d.strip()]
     else:
-        latest = latest_holdings_date()
-        if latest is None:
-            print("No holdings_daily rows found; aborting.")
-            return
-        start = latest + timedelta(days=1)
+        if args.from_date:
+            start = date.fromisoformat(args.from_date)
+        else:
+            latest = latest_holdings_date()
+            if latest is None:
+                print("No holdings_daily rows found; aborting.")
+                return
+            start = latest + timedelta(days=1)
 
-    end = date.fromisoformat(args.to_date) if args.to_date else date.today() - timedelta(days=1)
-
-    days = business_days(start, end)
+        end = date.fromisoformat(args.to_date) if args.to_date else date.today() - timedelta(days=1)
+        days = business_days(start, end)
     if not days:
         # 새로 수집할 영업일이 없어도 후처리는 멱등하므로 갱신을 이어간다
         # (갭 복구·종가/NAV 최신화). 데이터가 이미 최신이면 빠르게 끝난다.
-        print(f"No new business days to collect between {start} and {end}; running downstream only.", flush=True)
+        print("No new business days to collect; running downstream only.", flush=True)
     else:
         print(f"Collecting {len(days)} business day(s): {days[0]} .. {days[-1]}", flush=True)
         for d in days:
@@ -80,8 +88,11 @@ def main() -> None:
             run(cmd)
 
     # Downstream: fill diffs + signals for any new dates, refresh prices/NAV/flows.
-    run([PY, "-u", str(SCRIPTS / "repair_holdings_diff_gaps.py"), "--lookback-days", "21"])
-    run([PY, "-u", str(SCRIPTS / "repair_signal_gaps.py"), "--lookback-days", "21"])
+    # lookback은 가장 오래된 수집일을 덮도록 동적으로 잡는다 (과거 백필 대응).
+    earliest = min(days) if days else date.today()
+    lookback = max(21, (date.today() - earliest).days + 2)
+    run([PY, "-u", str(SCRIPTS / "repair_holdings_diff_gaps.py"), "--lookback-days", str(lookback)])
+    run([PY, "-u", str(SCRIPTS / "repair_signal_gaps.py"), "--lookback-days", str(lookback)])
 
     if not args.skip_prices:
         run([PY, "-u", str(SCRIPTS / "collect_stock_prices.py"), "--days", "365"])

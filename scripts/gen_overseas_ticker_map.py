@@ -284,6 +284,10 @@ NAME_FRAGMENTS: dict[str, str] = {
     "ILLINOIS TOOL WORKS": "ITW",
     "CINTAS": "CTAS",
     "ROPER INDUSTRIES": "ROP",
+    "ROPER TECHNOLOGIES": "ROP",
+    "BTQ TECHNOLOGIES": "BTQ",
+    "BTQ": "BTQ",
+    "LOGITECH": "LOGI",
     "HILTON WORLDWIDE": "HLT",
     "DIAMONDBACK": "FANG",
     "EQT": "EQT",
@@ -413,6 +417,7 @@ NAME_FRAGMENTS: dict[str, str] = {
 }
 
 KRX_LISTED = set(json.loads((ROOT / "data" / "krx_listed_codes.json").read_text(encoding="utf-8"))["codes"])
+US_TICKERS = set(json.loads((ROOT / "data" / "us_listed_tickers.json").read_text(encoding="utf-8"))["tickers"])
 
 AMBIGUOUS_OVERSEAS_PROXY_RE = re.compile(r"^(0000\d{2}|1000\d{2})$")
 
@@ -458,15 +463,26 @@ def logo_base_stems(logos: set[str]) -> list[str]:
     return sorted(bases, key=len, reverse=True)
 
 
+def ticker_as_word_in_text(text: str, stem: str) -> bool:
+    """티커 stem이 단어 경계로만 등장하는지 — TECHNOLOGIES 안의 LOGI 오매칭 방지."""
+    if len(stem) >= 6:
+        return stem in text
+    return bool(re.search(rf"(?:^|[\s/(]){re.escape(stem)}(?:[\s/.,)]|$)", text))
+
+
 def match_stem_in_name(upper: str, logos: set[str]) -> str | None:
     for base in logo_base_stems(logos):
         if len(base) < 3:
             continue
         if not ticker_in_logos(base, logos):
             continue
-        if re.search(rf"(?:^|[\s/(]){re.escape(base)}(?:[\s/.,)]|$)", upper):
+        if ticker_as_word_in_text(upper, base):
             return base
     return None
+
+
+def ticker_resolvable(ticker: str, logos: set[str]) -> bool:
+    return ticker_in_logos(ticker, logos) or ticker in US_TICKERS
 
 
 def resolve_ticker(name: str | None, logos: set[str], fragments: dict[str, str]) -> str | None:
@@ -474,7 +490,11 @@ def resolve_ticker(name: str | None, logos: set[str], fragments: dict[str, str])
         return None
     upper = normalize_name(name)
     for fragment, ticker in sorted(fragments.items(), key=lambda item: -len(item[0])):
-        if len(fragment) >= 4 and fragment in upper and ticker_in_logos(ticker, logos):
+        if (
+            len(fragment) >= 4
+            and ticker_as_word_in_text(upper, fragment)
+            and ticker_resolvable(ticker, logos)
+        ):
             return ticker
     stem = match_stem_in_name(upper, logos)
     if stem:
@@ -501,7 +521,7 @@ def discover_fragments(rows, logos: set[str], existing: dict[str, str], min_coun
         for base in stems:
             if len(base) < 4 or base in additions or base in existing:
                 continue
-            if base in upper and ticker_in_logos(base, logos):
+            if ticker_as_word_in_text(upper, base) and ticker_in_logos(base, logos):
                 additions[base] = base
                 break
         tokens = [t for t in upper.split() if len(t) >= 3][:3]
@@ -509,7 +529,7 @@ def discover_fragments(rows, logos: set[str], existing: dict[str, str], min_coun
             phrase = " ".join(tokens[:2])
             if len(phrase) >= 8 and phrase not in existing and phrase not in additions:
                 for base in stems:
-                    if base in phrase and ticker_in_logos(base, logos):
+                    if ticker_as_word_in_text(phrase, base) and ticker_in_logos(base, logos):
                         additions[phrase] = base
                         break
     return additions
@@ -532,7 +552,10 @@ def clean_fragments(fragments: dict[str, str], logos: set[str]) -> dict[str, str
             continue
         if len(ticker) < 3:
             continue
-        if not ticker_in_logos(ticker, logos):
+        # LOGI처럼 다른 단어 안에 들어가는 짧은 티커 키는 fragment로 쓰지 않음
+        if re.fullmatch(r"[A-Z]{2,5}", key) and key == ticker:
+            continue
+        if not ticker_resolvable(ticker, logos):
             continue
         cleaned[key] = ticker
     return cleaned
@@ -587,7 +610,7 @@ def main() -> None:
     code_map = {
         code: next(iter(tickers))
         for code, tickers in code_tickers.items()
-        if len(tickers) == 1 and ticker_in_logos(next(iter(tickers)), logos)
+        if len(tickers) == 1 and ticker_resolvable(next(iter(tickers)), logos)
     }
 
     out = ROOT / "lib" / "overseas-ticker-map.ts"

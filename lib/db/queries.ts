@@ -37,6 +37,7 @@ import {
 } from "@/lib/rankings";
 import { sanitizeNavSeries } from "@/lib/nav-series";
 import { isTrackableStock, isEquityStock } from "@/lib/stock-filter";
+import { isListedEquity } from "@/lib/equity-classify";
 import {
   buildDiffConsensusSignals,
   mergeSignalsWithDiffConsensus,
@@ -51,6 +52,7 @@ import {
 } from "@/lib/managers";
 import { aggregateMovesByEtf } from "@/lib/manager-tags";
 import { getSql } from "@/lib/db/client";
+import { isDatabaseConfigured } from "@/lib/db/env";
 import { cutoffIsoDate, getLatestHoldingsDiffDate } from "@/lib/db/query-helpers";
 import {
   demoFetchDashboard,
@@ -62,13 +64,20 @@ import {
   demoFetchSignals,
   demoFetchStockHoldings,
 } from "@/lib/db/demo-data";
-import { isDatabaseConfigured } from "@/lib/db/env";
+import { enrichChangesWithFlowEstimates, REBALANCE_FLOW_WINDOW_DAYS } from "@/lib/est-flow";
 import { normalizeIsoDate } from "@/lib/utils";
+
+export { enrichChangesWithFlowEstimates, REBALANCE_FLOW_WINDOW_DAYS } from "@/lib/est-flow";
 
 /** ETF 보유 공시는 전일자 기준으로 늦게 반영되므로, 최신 데이터일 기준 N일 창으로 집계 */
 export const RECENT_CHANGE_WINDOW_DAYS = 3;
 
 const RECENT_CHANGE_LOOKBACK_DAYS = RECENT_CHANGE_WINDOW_DAYS - 1;
+
+/** 흐름 페이지 비중 변화 — 날짜별 탐색용 (대시보드 3일 창과 분리) */
+export const FLOWS_CHANGE_LOOKBACK_DAYS = 90;
+const FLOWS_CHANGE_PER_DATE_LIMIT = 80;
+const FLOWS_CHANGE_FETCH_CAP = 4000;
 
 /** 매매 흐름 diff 조회 상한 (기간 필터와 별도) */
 const STOCK_FLOW_CHANGE_LIMIT = 1200;
@@ -131,7 +140,14 @@ function normalizeHolding(row: HoldingDaily): HoldingDaily {
 }
 
 function normalizeDiff(row: HoldingDiff): HoldingDiff {
-  return { ...row, date: toIsoDate(row.date) };
+  return {
+    ...row,
+    date: toIsoDate(row.date),
+    weight_prev: row.weight_prev != null ? Number(row.weight_prev) : null,
+    weight_curr: row.weight_curr != null ? Number(row.weight_curr) : null,
+    weight_delta: row.weight_delta != null ? Number(row.weight_delta) : null,
+    est_flow_krw: row.est_flow_krw != null ? Number(row.est_flow_krw) : null,
+  };
 }
 
 function enrichDiffRow(row: Record<string, unknown>): HoldingDiffEnriched {
@@ -195,18 +211,6 @@ function isBuyChange(type: HoldingDiff["change_type"], flow: number | null) {
   return (flow ?? 0) > 0;
 }
 
-function resolveEstFlowKrw(
-  change: Pick<HoldingDiffEnriched, "est_flow_krw" | "weight_delta" | "etf_ticker">,
-  aumByTicker: Map<string, number>,
-  medianAum: number,
-): number {
-  if (change.est_flow_krw != null && change.est_flow_krw !== 0) return change.est_flow_krw;
-  const delta = change.weight_delta;
-  if (delta == null || delta === 0) return 0;
-  const aum = aumByTicker.get(change.etf_ticker) ?? medianAum;
-  return aum * (delta / 100);
-}
-
 async function fetchEtfAumContext(tickers: string[]): Promise<{
   aumByTicker: Map<string, number>;
   medianAum: number;
@@ -235,17 +239,14 @@ async function fetchEtfAumContext(tickers: string[]): Promise<{
   };
 }
 
-function enrichChangesWithFlowEstimates(
-  changes: HoldingDiffEnriched[],
-  aumByTicker: Map<string, number>,
-  medianAum: number,
-): HoldingDiffEnriched[] {
-  return changes.map((change) => {
-    const resolved = resolveEstFlowKrw(change, aumByTicker, medianAum);
-    if (change.est_flow_krw != null && change.est_flow_krw !== 0) return change;
-    if (resolved === 0) return change;
-    return { ...change, est_flow_krw: resolved };
-  });
+export async function fetchEtfAumMap(tickers: string[]): Promise<{
+  aumByTicker: Map<string, number>;
+  medianAum: number;
+}> {
+  if (!isDatabaseConfigured()) {
+    return { aumByTicker: new Map(), medianAum: 50_000_000_000 };
+  }
+  return fetchEtfAumContext(tickers);
 }
 
 function groupStockFlows(changes: HoldingDiffEnriched[]): StockFlowSummary[] {
@@ -363,6 +364,56 @@ export async function fetchRecentChangesEnriched(
   let rows = changeRows.map(enrichDiffRow).filter((row) => isTrackableStock(row.stock_code, row.stock_name));
   if (equitiesOnly) {
     rows = rows.filter((row) => isEquityStock(row.stock_code, row.stock_name)).slice(0, limit);
+  }
+  const { aumByTicker, medianAum } = await fetchEtfAumContext(rows.map((r) => r.etf_ticker));
+  return enrichChangesWithFlowEstimates(rows, aumByTicker, medianAum);
+}
+
+/** 흐름 페이지 — 날짜별 필터용. 일자당 상위 N건씩 최근 lookback 구간 전체를 가져옴 */
+export async function fetchFlowsPageChangesEnriched(
+  manager?: string,
+  equitiesOnly = true,
+): Promise<HoldingDiffEnriched[]> {
+  if (!isDatabaseConfigured()) {
+    const { demoFetchRecentChanges } = await import("@/lib/db/demo-data");
+    const rows = demoFetchRecentChanges(manager, 500);
+    return equitiesOnly ? rows.filter((r) => isEquityStock(r.stock_code, r.stock_name)) : rows;
+  }
+
+  const sql = getSql();
+  const managerVariants = await loadManagerVariants(manager);
+  const latestDate = await getLatestHoldingsDiffDate(sql);
+  const cutoffDate = latestDate ? cutoffIsoDate(latestDate, FLOWS_CHANGE_LOOKBACK_DAYS) : null;
+
+  const changeRows = (await sql`
+    WITH ranked AS (
+      SELECT
+        d.*,
+        u.name AS etf_name,
+        u.manager,
+        u.strategy_type,
+        NULL::float AS return_since_change,
+        ROW_NUMBER() OVER (
+          PARTITION BY d.date
+          ORDER BY ABS(d.weight_delta) DESC NULLS LAST
+        ) AS rn
+      FROM holdings_diff d
+      INNER JOIN etf_universe u ON u.ticker = d.etf_ticker
+      WHERE u.strategy_type IN ('active', 'theme')
+        AND (${cutoffDate}::date IS NULL OR d.date >= ${cutoffDate}::date)
+        AND (${managerVariants}::text[] IS NULL OR u.manager = ANY(${managerVariants}))
+    )
+    SELECT * FROM ranked
+    WHERE rn <= ${FLOWS_CHANGE_PER_DATE_LIMIT}
+    ORDER BY date DESC, rn ASC
+    LIMIT ${FLOWS_CHANGE_FETCH_CAP}
+  `) as Record<string, unknown>[];
+
+  let rows = changeRows
+    .map(enrichDiffRow)
+    .filter((row) => isTrackableStock(row.stock_code, row.stock_name));
+  if (equitiesOnly) {
+    rows = rows.filter((row) => isEquityStock(row.stock_code, row.stock_name));
   }
   const { aumByTicker, medianAum } = await fetchEtfAumContext(rows.map((r) => r.etf_ticker));
   return enrichChangesWithFlowEstimates(rows, aumByTicker, medianAum);
@@ -762,6 +813,67 @@ async function fetchStockPriceSparklinesByRefImpl(
 /** code+name별 시세 (KRX 프록시 코드 재사용 시 종목명 기준 해외 시세 조회) */
 export const fetchStockPriceSparklinesByRef = cache(fetchStockPriceSparklinesByRefImpl);
 
+const INTRADAY_YAHOO_BATCH = 6;
+const DEFAULT_MAX_YAHOO_INTRADAY_FETCHES = 16;
+
+async function fetchStockIntradayByRefImpl(
+  refs: StockRef[],
+  period: "1d" | "1w",
+  options: SparklineFetchOptions = {},
+): Promise<Record<string, import("@/lib/types").StockPricePoint[]>> {
+  const uniqueRefs = dedupeStockRefs(refs.filter((r) => r.stock_code));
+  if (!uniqueRefs.length) return {};
+
+  // 일별 폴백 (장중 데이터가 비거나 DB 미설정 시) — 1주 창보다 약간 넓게
+  const fallbackDays = period === "1d" ? 5 : 14;
+  const dailyByKey = await fetchStockPriceSparklinesByRefImpl(uniqueRefs, fallbackDays, {
+    maxYahooFetches: options.maxYahooFetches ?? DEFAULT_MAX_YAHOO_INTRADAY_FETCHES,
+  });
+
+  const out: Record<string, import("@/lib/types").StockPricePoint[]> = {};
+  for (const ref of uniqueRefs) {
+    out[stockRefKey(ref)] = [];
+  }
+
+  // 장중 데이터는 DB에 없으므로 Yahoo만 사용 — 상위 노출 종목 우선
+  const maxYahoo = options.maxYahooFetches ?? DEFAULT_MAX_YAHOO_INTRADAY_FETCHES;
+  const intradayRefs = uniqueRefs.slice(0, maxYahoo);
+
+  const { looksLikeOverseasStockName } = await import("@/lib/stock-ticker-resolve");
+  const { fetchKrxIntradayFromYahoo, fetchOverseasIntradayFromYahoo } = await import(
+    "@/lib/overseas-prices"
+  );
+
+  for (let i = 0; i < intradayRefs.length; i += INTRADAY_YAHOO_BATCH) {
+    const batch = intradayRefs.slice(i, i + INTRADAY_YAHOO_BATCH);
+    await Promise.all(
+      batch.map(async (ref) => {
+        try {
+          const key = stockRefKey(ref);
+          const overseas = looksLikeOverseasStockName(ref.stock_name, ref.stock_code);
+          const points = overseas
+            ? await fetchOverseasIntradayFromYahoo(ref.stock_code, ref.stock_name, period)
+            : await fetchKrxIntradayFromYahoo(ref.stock_code, period);
+          if (points.length >= 2) out[key] = points;
+        } catch {
+          // 장중 실패 시 일별 폴백으로 채워짐
+        }
+      }),
+    );
+  }
+
+  // 장중을 못 받은 종목은 일별 시세로 폴백
+  for (const ref of uniqueRefs) {
+    const key = stockRefKey(ref);
+    if (!out[key]?.length) out[key] = dailyByKey[key] ?? [];
+  }
+
+  return out;
+}
+
+/** 1일/1주 장중(5분·30분봉) 시계열. 실패 종목은 일별 종가로 폴백 */
+export const fetchStockIntradayByRef = cache(fetchStockIntradayByRefImpl);
+
 export async function fetchEtfNamesByTickers(
   tickers: string[],
 ): Promise<import("@/lib/types").EtfNameLookup> {
@@ -920,7 +1032,15 @@ export async function fetchEtfDetail(ticker: string) {
     SELECT * FROM etf_universe WHERE ticker = ${ticker} LIMIT 1
   `) as Record<string, unknown>[];
   const holdings = ((await sql`
-    SELECT * FROM holdings_daily WHERE etf_ticker = ${ticker} ORDER BY date DESC LIMIT 200
+    SELECT h.*
+    FROM holdings_daily h
+    INNER JOIN (
+      SELECT MAX(date) AS latest_date
+      FROM holdings_daily
+      WHERE etf_ticker = ${ticker}
+    ) latest ON h.date = latest.latest_date
+    WHERE h.etf_ticker = ${ticker}
+    ORDER BY h.weight DESC NULLS LAST
   `) as HoldingDaily[]).map(normalizeHolding);
   const diffs = ((await sql`
     SELECT * FROM holdings_diff WHERE etf_ticker = ${ticker} ORDER BY date DESC LIMIT 100
@@ -1201,11 +1321,13 @@ export async function fetchSignals(limit = 100): Promise<SignalDaily[]> {
 export async function fetchManagers(): Promise<string[]> {
   if (!isDatabaseConfigured()) return demoFetchManagers();
 
-  const sql = getSql();
-  const rows = (await sql`
-    SELECT DISTINCT manager FROM etf_universe WHERE manager IS NOT NULL
-  `) as { manager: string }[];
-  return listManagerOptions(buildManagerGroupMap(rows.map((r) => r.manager)));
+  return withDbQuery("fetchManagers", [], async () => {
+    const sql = getSql();
+    const rows = (await sql`
+      SELECT DISTINCT manager FROM etf_universe WHERE manager IS NOT NULL
+    `) as { manager: string }[];
+    return listManagerOptions(buildManagerGroupMap(rows.map((r) => r.manager)));
+  });
 }
 
 export async function fetchPopularStocks(limit = 50): Promise<PopularStock[]> {
@@ -1246,6 +1368,36 @@ export async function fetchPopularStocks(limit = 50): Promise<PopularStock[]> {
     .filter((row) => isTrackableStock(row.stock_code, row.stock_name));
 }
 
+export async function enrichPopularStocksWithReturns(
+  stocks: PopularStock[],
+  period: ReturnPeriod = "1m",
+): Promise<PopularStock[]> {
+  if (!stocks.length) return stocks;
+
+  const equityRefs = stocks
+    .filter((s) => isListedEquity(s.stock_name, s.stock_code))
+    .map((s) => ({ stock_code: s.stock_code, stock_name: s.stock_name }));
+
+  if (!equityRefs.length) return stocks;
+
+  const days = periodToDays(period) + 14;
+  const priceMap = await fetchStockPriceSparklinesByRef(equityRefs, days, { maxYahooFetches: 48 });
+  const periodDays = periodToDays(period);
+
+  return stocks.map((stock) => {
+    if (!isListedEquity(stock.stock_name, stock.stock_code)) return stock;
+    const key = stockRefKey({ stock_code: stock.stock_code, stock_name: stock.stock_name });
+    const points = priceMap[key] ?? priceMap[stock.stock_code] ?? [];
+    return {
+      ...stock,
+      price_return_pct: computePeriodReturn(
+        points.map((p) => ({ date: p.date, value: p.close })),
+        periodDays,
+      ),
+    };
+  });
+}
+
 export async function fetchDashboard(manager?: string): Promise<DashboardData> {
   if (!isDatabaseConfigured()) return demoFetchDashboard(manager);
 
@@ -1273,10 +1425,14 @@ export async function fetchDashboard(manager?: string): Promise<DashboardData> {
   const recentChanges = await fetchRecentChangesEnriched(manager, 20, true);
   const flowStats = summarizeFlowStats(await fetchRecentChangesForStats(manager));
 
-  const signalRows = (await sql`
-    SELECT COUNT(*)::int AS cnt FROM signals_daily
-    WHERE date >= (CURRENT_DATE - INTERVAL '7 days')
-  `) as { cnt: number }[];
+  const signalCutoff = latestDate ? cutoffIsoDate(latestDate, RECENT_CHANGE_LOOKBACK_DAYS) : null;
+
+  const signalRows = signalCutoff
+    ? ((await sql`
+        SELECT COUNT(*)::int AS cnt FROM signals_daily
+        WHERE date >= ${signalCutoff}::date
+      `) as { cnt: number }[])
+    : [{ cnt: 0 }];
 
   const activeRows = (await sql`
     SELECT COUNT(*)::int AS cnt FROM etf_universe
@@ -1401,7 +1557,6 @@ export async function fetchEtfReturnRankings(
 }
 
 const NEW_LISTING_LOOKBACK_DAYS = 90;
-const ETF_FLOW_WINDOW_DAYS = 7;
 
 function buildMarketOverview(
   rows: { name: string; aum: number | null; date: string | null }[],
@@ -1581,7 +1736,7 @@ function aggregateManagerFlows(leaders: EtfFlowLeader[]): {
 
 export async function fetchEtfFlowSnapshot(
   manager?: string,
-  windowDays = ETF_FLOW_WINDOW_DAYS,
+  windowDays = REBALANCE_FLOW_WINDOW_DAYS,
   limit = 10,
 ): Promise<EtfFlowSnapshot> {
   if (!isDatabaseConfigured()) {

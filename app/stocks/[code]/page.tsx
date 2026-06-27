@@ -6,11 +6,13 @@ import { SignalHistoryList } from "@/components/explorer/SignalHistoryList";
 import { StockDualChart } from "@/components/explorer/StockDualChart";
 import { isBondLikeAsset } from "@/lib/bond-issuer";
 import {
+  fetchEtfAumMap,
   fetchEtfNavSparklines,
   fetchStockHoldings,
   fetchStockEtfWeightSeries,
   fetchStockPriceHistory,
 } from "@/lib/db/queries";
+import { enrichChangesWithFlowEstimates } from "@/lib/est-flow";
 import { formatStockDisplayName, getStockDisplayTooltip } from "@/lib/stock-display";
 import { formatKrw, formatPercent } from "@/lib/utils";
 import type { HoldingDiffEnriched, WeightChartMarker } from "@/lib/types";
@@ -22,10 +24,11 @@ export default async function StockPage({ params }: { params: Params }) {
   const { holdings, etfs, diffs } = await fetchStockHoldings(code);
   const stockNamePreview = holdings[0]?.stock_name ?? code;
   const showPriceChart = !isBondLikeAsset(stockNamePreview, code);
-  const [navByTicker, priceHistory, weightSeries] = await Promise.all([
+  const [navByTicker, priceHistory, weightSeries, aumContext] = await Promise.all([
     fetchEtfNavSparklines(etfs.map((e) => e.ticker)),
     showPriceChart ? fetchStockPriceHistory(code, "1m", stockNamePreview) : Promise.resolve([]),
     fetchStockEtfWeightSeries(code),
+    fetchEtfAumMap([...new Set(diffs.map((d) => d.etf_ticker))]),
   ]);
 
   const latestByEtf = new Map<string, (typeof holdings)[number]>();
@@ -41,15 +44,19 @@ export default async function StockPage({ params }: { params: Params }) {
   const maxWeight = rows[0]?.weight ?? 15;
   const latestWeightDate = holdings[0]?.date ?? null;
 
-  const enrichedDiffs: HoldingDiffEnriched[] = diffs.map((d) => {
-    const etf = etfs.find((e) => e.ticker === d.etf_ticker);
-    return {
-      ...d,
-      etf_name: etf?.name ?? null,
-      manager: etf?.manager ?? null,
-      return_since_change: (d as { return_since_change?: number }).return_since_change ?? null,
-    };
-  });
+  const enrichedDiffs: HoldingDiffEnriched[] = enrichChangesWithFlowEstimates(
+    diffs.map((d) => {
+      const etf = etfs.find((e) => e.ticker === d.etf_ticker);
+      return {
+        ...d,
+        etf_name: etf?.name ?? null,
+        manager: etf?.manager ?? null,
+        return_since_change: (d as { return_since_change?: number }).return_since_change ?? null,
+      };
+    }),
+    aumContext.aumByTicker,
+    aumContext.medianAum,
+  );
 
   const markers: WeightChartMarker[] = enrichedDiffs.map((d) => ({
     date: d.date,
@@ -58,7 +65,7 @@ export default async function StockPage({ params }: { params: Params }) {
   }));
 
   const latestPerf = enrichedDiffs.find((d) => d.return_since_change != null)?.return_since_change;
-  const netFlow = diffs.reduce((s, d) => s + (d.est_flow_krw ?? 0), 0);
+  const netFlow = enrichedDiffs.reduce((s, d) => s + (d.est_flow_krw ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -75,7 +82,7 @@ export default async function StockPage({ params }: { params: Params }) {
           <StockLogo stockName={stockName} stockCode={code} size={52} variant="circle" />
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-display text-3xl">{stockDisplayName}</h1>
+              <h1 className="page-title">{stockDisplayName}</h1>
               <AssetClassTag stockName={stockName} stockCode={code} className="mt-1" />
             </div>
             {stockNameDetail ? (

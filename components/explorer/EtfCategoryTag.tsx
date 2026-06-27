@@ -4,7 +4,7 @@ import {
   inferEtfAssetClass,
   type EtfAssetClassId,
 } from "@/lib/etf-asset-class";
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/cn";
 
 type Props = {
   etfName?: string | null;

@@ -35,6 +35,7 @@ const ISSUER_LOGO_RULES: IssuerRule[] = [
   { pattern: /우리(?:금융)?캐피탈|JB\s*우리캐피탈/, logo: "financial/증권/우리금융" },
   { pattern: /롯데(?:캐피탈|카드)?/, logo: "financial/카드/롯데" },
   { pattern: /현대(?:캐피탈|차증권)?/, logo: "financial/증권/현대차" },
+  { pattern: /^iM금융지주/i, logo: "stock/iM금융지주" },
   { pattern: /^(?:디비|DB)(?:금융|증권|캐피탈)?/i, logo: "financial/증권/DB금융투자" },
   { pattern: /^(?:에스케이|SK)(?:증권|캐피탈)?/i, logo: "financial/증권/SK" },
   { pattern: /^(?:아이엠|IM)(?:캐피탈|증권)?/i, logo: "financial/증권/한국투자" },

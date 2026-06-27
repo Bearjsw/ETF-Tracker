@@ -25,6 +25,29 @@ function trimPriceSeries(data: StockPricePoint[], periodDays: number): StockPric
   return trimmed.length >= 2 ? trimmed : sorted;
 }
 
+/** Catmull-Rom → cubic bezier 변환으로 부드러운 곡선 path 생성 */
+function smoothLinePath(points: { x: number; y: number }[]): string {
+  if (points.length < 2) return "";
+  if (points.length === 2) {
+    return `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)} L${points[1].x.toFixed(1)},${points[1].y.toFixed(1)}`;
+  }
+  const d = [`M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d.push(
+      `C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`,
+    );
+  }
+  return d.join(" ");
+}
+
 export function StockPriceSparkline({
   data,
   stockCode,
@@ -35,8 +58,14 @@ export function StockPriceSparkline({
   periodDays,
   hideWhenEmpty = false,
 }: Props) {
-  const sorted = periodDays ? trimPriceSeries(data, periodDays) : [...data].sort((a, b) => a.date.localeCompare(b.date));
-  const chartWidth = fullWidth ? 200 : width;
+  const isIntraday = data.some((p) => p.t != null);
+  // 장중 데이터는 이미 기간이 한정돼 있으므로 trimming 없이 시간순 정렬만
+  const sorted = isIntraday
+    ? [...data].sort((a, b) => (a.t ?? 0) - (b.t ?? 0) || a.date.localeCompare(b.date))
+    : periodDays
+      ? trimPriceSeries(data, periodDays)
+      : [...data].sort((a, b) => a.date.localeCompare(b.date));
+  const chartWidth = fullWidth ? 240 : width;
   const chartHeight = fullWidth ? 72 : height;
 
   if (sorted.length < 2) {
@@ -59,8 +88,11 @@ export function StockPriceSparkline({
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  const perf =
-    periodDays != null
+  const perf = isIntraday
+    ? values[0]
+      ? ((values[values.length - 1] - values[0]) / values[0]) * 100
+      : null
+    : periodDays != null
       ? computePeriodReturn(
           data.map((p) => ({ date: p.date, value: p.close })),
           periodDays,
@@ -71,14 +103,21 @@ export function StockPriceSparkline({
   const up = (perf ?? 0) >= 0;
   const { stroke, fill } = chartTrendColors(up);
 
+  // 시작가 기준선 (장중 변동을 직관적으로) — 가장 오래된 종가
+  const baseValue = values[0];
+  const baseY = chartHeight - 6 - ((baseValue - min) / range) * (chartHeight - 12);
+
   const points = values.map((v, i) => {
     const x = (i / (values.length - 1)) * chartWidth;
     const y = chartHeight - 6 - ((v - min) / range) * (chartHeight - 12);
     return { x, y };
   });
 
-  const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const line = smoothLinePath(points);
   const area = `${line} L${chartWidth},${chartHeight} L0,${chartHeight} Z`;
+  const last = points[points.length - 1];
+  const safeCode = stockCode.replace(/\W/g, "");
+  const gradientId = `spark-${safeCode}-${fullWidth ? "f" : "s"}-${up ? "u" : "d"}`;
 
   const svg = (
     <svg
@@ -89,14 +128,44 @@ export function StockPriceSparkline({
       className={fullWidth ? "block w-full" : "shrink-0"}
       aria-hidden
     >
-      <path d={area} fill={fill} fillOpacity={0.35} />
-      <path d={line} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
+          <stop offset="100%" stopColor={stroke} stopOpacity={0.02} />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gradientId})`} />
+      {isIntraday ? (
+        <line
+          x1={0}
+          y1={baseY}
+          x2={chartWidth}
+          y2={baseY}
+          stroke={stroke}
+          strokeWidth={1}
+          strokeDasharray="3 3"
+          strokeOpacity={0.35}
+          vectorEffect="non-scaling-stroke"
+        />
+      ) : null}
+      <path
+        d={line}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={fullWidth ? 1.75 : 1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      <circle cx={last.x} cy={last.y} r={fullWidth ? 2.5 : 2} fill={stroke} stroke="#fff" strokeWidth={1} />
     </svg>
   );
 
+  const title = isIntraday ? `${stockCode} 장중 추이` : `${stockCode} 주가 추이`;
+
   if (fullWidth) {
     return (
-      <div className="w-full" title={`${stockCode} 주가 추이`}>
+      <div className="w-full" title={title}>
         {svg}
         {showPerf && perf != null ? (
           <p className={`mt-1 text-right text-xs font-semibold tabular-nums ${chartTrendPerfClass(up)}`}>
@@ -108,7 +177,7 @@ export function StockPriceSparkline({
   }
 
   return (
-    <div className="inline-flex items-center gap-1.5" title={`${stockCode} 3달 주가 추이`}>
+    <div className="inline-flex items-center gap-1.5" title={title}>
       {svg}
       {showPerf && perf != null ? (
         <span className={`text-[10px] font-semibold tabular-nums ${chartTrendPerfClass(up)}`}>

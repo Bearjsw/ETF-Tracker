@@ -41,9 +41,9 @@ export function EtfSourceTag({
       title={label}
       className={`etf-source-tag inline-flex max-w-full flex-col items-start gap-0.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
         isBuy
-          ? "bg-[var(--accent-muted)] text-[var(--foreground)] hover:bg-[#dff5d4]"
+          ? "bg-[var(--positive-muted)] text-[var(--foreground)] hover:bg-[#fde8e8]"
           : isSell
-            ? "bg-[var(--negative-muted)] text-[var(--foreground)] hover:bg-[#fde8e8]"
+            ? "bg-[var(--negative-muted)] text-[var(--foreground)] hover:bg-[#dff5d4]"
             : "bg-[#f0f2ef] text-[var(--foreground)] hover:bg-[#e6e9e4]"
       }`}
     >

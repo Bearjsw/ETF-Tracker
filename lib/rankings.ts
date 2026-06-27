@@ -37,6 +37,11 @@ export function navSparklineDays(period: ReturnPeriod): number {
   return periodToDays(period) + 14;
 }
 
+/** 1일·1주는 장중(5분/30분봉) 시계열로 더 촘촘하게 표시 */
+export function isIntradayPeriod(period: ReturnPeriod): period is "1d" | "1w" {
+  return period === "1d" || period === "1w";
+}
+
 export function computePeriodReturn(
   points: { date: string; value: number }[],
   periodDays: number,
@@ -45,6 +50,13 @@ export function computePeriodReturn(
 
   const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
   const latest = sorted[sorted.length - 1];
+
+  if (periodDays === 1) {
+    const prev = sorted[sorted.length - 2];
+    if (!prev?.value) return null;
+    return ((latest.value - prev.value) / prev.value) * 100;
+  }
+
   const endDate = new Date(latest.date);
   const start = new Date(endDate);
   start.setDate(start.getDate() - periodDays);

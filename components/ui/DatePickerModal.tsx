@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { cn, formatDateHeading, normalizeIsoDate } from "@/lib/utils";
+import { cn } from "@/lib/cn";
+import { formatDateHeading, normalizeIsoDate } from "@/lib/utils";
 
 const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
 

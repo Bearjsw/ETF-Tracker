@@ -7,5 +7,5 @@ export function chartTrendColors(up: boolean) {
 }
 
 export function chartTrendPerfClass(up: boolean) {
-  return up ? "delta-negative" : "delta-positive";
+  return up ? "delta-positive" : "delta-negative";
 }

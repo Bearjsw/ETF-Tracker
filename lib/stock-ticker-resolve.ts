@@ -230,7 +230,7 @@ export function resolveStockTickerSymbol(
     inferStockMarket(name, code) === "overseas"
   ) {
     const mapped = KRX_OVERSEAS_CODE_TICKERS[code];
-    if (hasAsciiLogoStem(mapped)) return mapped;
+    if (hasAsciiLogoStem(mapped) || isUsListedTicker(mapped)) return mapped;
   }
 
   if (name && inferStockMarket(name, code) === "overseas") {

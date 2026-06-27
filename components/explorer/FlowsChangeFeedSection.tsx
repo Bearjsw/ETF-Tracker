@@ -53,7 +53,7 @@ export function FlowsChangeFeedSection({ changes, priceByStock }: Props) {
         changes={[]}
         priceByStock={priceByStock}
         title="비중 변화 (주식)"
-        layout="grid"
+        layout="list"
       />
     );
   }
@@ -91,7 +91,7 @@ export function FlowsChangeFeedSection({ changes, priceByStock }: Props) {
 
       {filtered.length ? (
         <>
-          <ChangeFeed changes={pageItems} priceByStock={priceByStock} layout="grid" />
+          <ChangeFeed changes={pageItems} priceByStock={priceByStock} layout="list" />
           <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
         </>
       ) : (

@@ -45,12 +45,15 @@ def main() -> None:
 
     # prev calendar day is not always the previous holdings snapshot (weekends/holidays)
     run([py, str(SCRIPTS / "compute_holdings_diff.py"), "--date", args.date])
+    run([py, str(SCRIPTS / "repair_holdings_diff_gaps.py"), "--lookback-days", "30"])
     run([py, str(SCRIPTS / "compute_signals.py"), "--date", args.date])
+    run([py, str(SCRIPTS / "repair_signal_gaps.py"), "--lookback-days", "30"])
     price_cmd = [py, str(SCRIPTS / "collect_stock_prices.py"), "--days", "365"]
     if args.all_prices:
         price_cmd.append("--all-listed")
     run(price_cmd)
     run([py, str(SCRIPTS / "collect_etf_nav_history.py"), "--days", "365", "--limit", str(args.limit), "--all-crawl"])
+    run([py, str(SCRIPTS / "backfill_est_flow.py"), "--recalculate"])
     print("\nPipeline complete.")
 
 

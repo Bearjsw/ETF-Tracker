@@ -21,7 +21,7 @@ def compute_pair_diff(
     aum_by_ticker: dict[str, float | None],
     median_aum: float,
 ) -> list[dict]:
-    return compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker, median_aum)
+    return compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker)
 
 
 def main() -> None:

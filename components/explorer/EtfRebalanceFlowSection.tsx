@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { EtfCategoryTag } from "@/components/explorer/EtfCategoryTag";
 import { ManagerFlowPanel } from "@/components/explorer/ManagerFlowPanel";
+import { REBALANCE_FLOW_FOOTNOTE, SUBSCRIPTION_FLOW_FOOTNOTE } from "@/lib/est-flow";
 import type { EtfFlowSnapshot } from "@/lib/types";
 import { formatKrw, formatManagerShort } from "@/lib/utils";
 
@@ -70,10 +71,10 @@ export function EtfRebalanceFlowSection({ snapshot, manager }: Props) {
       <section className="card rebalance-flow-block">
         <h2 className="rebalance-flow-heading">ETF 리밸런싱 추정</h2>
         <p className="mt-1 text-xs text-[var(--muted)]">
-          look-through 보유 비중 변화 기준 · 최근 {snapshot.windowDays}일
+          {REBALANCE_FLOW_FOOTNOTE} · 최근 {snapshot.windowDays}일
           {manager ? ` · ${manager}` : null}
           {" · "}
-          설정·환매(Δ좌수×NAV)는{" "}
+          {SUBSCRIPTION_FLOW_FOOTNOTE}는{" "}
           <Link href="/market" className="font-medium text-[var(--accent)] hover:underline">
             시장
           </Link>

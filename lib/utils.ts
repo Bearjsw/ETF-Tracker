@@ -1,10 +1,3 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
 export function formatNumber(value: number | null | undefined, digits = 0) {
   if (value == null || Number.isNaN(value) || !Number.isFinite(value)) return "-";
   return new Intl.NumberFormat("ko-KR", {
@@ -14,7 +7,7 @@ export function formatNumber(value: number | null | undefined, digits = 0) {
 }
 
 export function formatKrw(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return "-";
+  if (value == null || Number.isNaN(value) || !Number.isFinite(value)) return "-";
   const abs = Math.abs(value);
   if (abs >= 1_0000_0000_0000) return `${formatNumber(value / 1_0000_0000_0000, 1)}조`;
   if (abs >= 1_0000_0000) return `${formatNumber(value / 1_0000_0000, 1)}억`;
@@ -154,6 +147,13 @@ export function changeTypeBadgeClass(type: string) {
     default:
       return "badge";
   }
+}
+
+/** 비중 확대·축소 등 변화 유형별 글자색 (트리맵·태그와 동일 톤) */
+export function changeTypeDeltaClass(type: string, delta?: number | null) {
+  if (type === "new" || type === "weight_up") return "delta-weight-up";
+  if (type === "removed" || type === "weight_down") return "delta-weight-down";
+  return (delta ?? 0) >= 0 ? "delta-positive" : "delta-negative";
 }
 
 export function strategyLabel(type: string) {

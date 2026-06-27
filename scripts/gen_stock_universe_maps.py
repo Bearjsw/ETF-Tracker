@@ -27,26 +27,26 @@ def is_korean_stock_code(code: str) -> bool:
     return len(code) == 6 and code.isdigit() and code != "000000"
 
 
-def fetch_krx_listed_codes() -> list[str]:
+def fetch_krx_by_board() -> dict[str, list[str]]:
     import FinanceDataReader as fdr
 
-    codes: set[str] = set()
-    for market in ("KOSPI", "KOSDAQ"):
+    boards: dict[str, set[str]] = {"kospi": set(), "kosdaq": set()}
+    for market, key in (("KOSPI", "kospi"), ("KOSDAQ", "kosdaq")):
         print(f"Fetching {market}...")
         df = fdr.StockListing(market)
         col = "Code" if "Code" in df.columns else "Symbol" if "Symbol" in df.columns else df.columns[0]
         for raw in df[col].astype(str):
             digits = "".join(ch for ch in raw if ch.isdigit()).zfill(6)[-6:]
             if is_korean_stock_code(digits):
-                codes.add(digits)
-    return sorted(codes)
+                boards[key].add(digits)
+    return {k: sorted(v) for k, v in boards.items()}
 
 
-def fetch_us_listed_tickers() -> list[str]:
+def fetch_us_by_exchange() -> dict[str, list[str]]:
     import FinanceDataReader as fdr
 
-    tickers: set[str] = set()
-    for market in ("NASDAQ", "NYSE", "AMEX"):
+    exchanges: dict[str, set[str]] = {"nyse": set(), "nasdaq": set(), "amex": set()}
+    for market, key in (("NASDAQ", "nasdaq"), ("NYSE", "nyse"), ("AMEX", "amex")):
         print(f"Fetching {market}...")
         try:
             df = fdr.StockListing(market)
@@ -57,7 +57,20 @@ def fetch_us_listed_tickers() -> list[str]:
         for raw in df[col].astype(str):
             t = raw.strip().upper()
             if t and t != "NAN":
-                tickers.add(t)
+                exchanges[key].add(t)
+    return {k: sorted(v) for k, v in exchanges.items()}
+
+
+def fetch_krx_listed_codes() -> list[str]:
+    boards = fetch_krx_by_board()
+    return sorted(set(boards["kospi"]) | set(boards["kosdaq"]))
+
+
+def fetch_us_listed_tickers() -> list[str]:
+    exchanges = fetch_us_by_exchange()
+    tickers: set[str] = set()
+    for items in exchanges.values():
+        tickers.update(items)
     return sorted(tickers)
 
 
@@ -71,11 +84,23 @@ def main() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     today = date.today().isoformat()
 
-    krx = fetch_krx_listed_codes()
-    us = fetch_us_listed_tickers()
+    krx_boards = fetch_krx_by_board()
+    us_exchanges = fetch_us_by_exchange()
+    krx = sorted(set(krx_boards["kospi"]) | set(krx_boards["kosdaq"]))
+    us = sorted({t for items in us_exchanges.values() for t in items})
 
-    krx_payload = {"updated": today, "source": "FinanceDataReader KOSPI+KOSDAQ", "codes": krx}
-    us_payload = {"updated": today, "source": "FinanceDataReader NASDAQ+NYSE+AMEX", "tickers": us}
+    krx_payload = {
+        "updated": today,
+        "source": "FinanceDataReader KOSPI+KOSDAQ",
+        "codes": krx,
+        "boards": krx_boards,
+    }
+    us_payload = {
+        "updated": today,
+        "source": "FinanceDataReader NASDAQ+NYSE+AMEX",
+        "tickers": us,
+        "exchanges": us_exchanges,
+    }
 
     (DATA / "krx_listed_codes.json").write_text(
         json.dumps(krx_payload, ensure_ascii=False, indent=2),

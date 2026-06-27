@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { REBALANCE_FLOW_FOOTNOTE, SUBSCRIPTION_FLOW_FOOTNOTE } from "@/lib/est-flow";
+
 type Props = {
   trackedStocks: number;
   hasSellEvents: boolean;
@@ -6,6 +9,23 @@ type Props = {
 
 /** 샘플·미수집 상태로 볼 만큼 적은 종목 수 */
 const LOW_COVERAGE_STOCKS = 30;
+
+function FlowFootnote() {
+  return (
+    <>
+      {" "}
+      <Link href="/flows" className="font-medium text-[var(--accent)] hover:underline">
+        {REBALANCE_FLOW_FOOTNOTE}
+      </Link>
+      {" · "}
+      {SUBSCRIPTION_FLOW_FOOTNOTE}는{" "}
+      <Link href="/market" className="font-medium text-[var(--accent)] hover:underline">
+        시장
+      </Link>
+      에서 확인
+    </>
+  );
+}
 
 export function FlowDataNotice({ trackedStocks, hasSellEvents, krxConfigured = false }: Props) {
   if (trackedStocks === 0) {
@@ -26,6 +46,7 @@ export function FlowDataNotice({ trackedStocks, hasSellEvents, krxConfigured = f
         현재 <strong className="font-semibold text-[var(--foreground)]">{trackedStocks}개 종목</strong>만
         비중 변화로 추적 중입니다 (샘플 데이터 또는 수집 직후). 순위는 ETF 편입·비중 조정에서 추정한 흐름이며, KRX
         시장 전체 거래 순위가 아닙니다.
+        <FlowFootnote />.
         {krxConfigured ? (
           <>
             {" "}
@@ -51,14 +72,16 @@ export function FlowDataNotice({ trackedStocks, hasSellEvents, krxConfigured = f
         {" · "}
         ETF 보유 비중 변화 기준 · 추적 종목{" "}
         <strong className="font-semibold text-[var(--foreground)]">{trackedStocks.toLocaleString("ko-KR")}개</strong>{" "}
-        (KRX 시장 전체 거래 순위 아님). 연속 2일 이상 수집·diff 계산 후 순매도·비중 축소가 반영됩니다.
+        (KRX 시장 전체 거래 순위 아님).
+        <FlowFootnote />. 연속 2일 이상 수집·diff 계산 후 순매도·비중 축소가 반영됩니다.
       </div>
     );
   }
 
   return (
     <div className="rounded-xl border border-[#e8ebe6] bg-[#f7f8f5] px-4 py-3 text-sm text-[var(--muted)]">
-      ETF 보유 비중 변화 기준 · 추적 종목 {trackedStocks.toLocaleString("ko-KR")}개 (KRX 시장 전체 거래 순위 아님)
+      ETF 보유 비중 변화 기준 · 추적 종목 {trackedStocks.toLocaleString("ko-KR")}개 (KRX 시장 전체 거래 순위 아님).
+      <FlowFootnote />.
     </div>
   );
 }

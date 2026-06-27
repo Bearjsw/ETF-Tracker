@@ -60,7 +60,7 @@ def main() -> None:
             tickers = sorted({r["etf_ticker"] for r in curr_rows})
             aum_by_ticker = {ticker: load_meta(conn, as_of, ticker) for ticker in tickers}
             median_aum = load_median_aum(conn)
-            diffs = compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker, median_aum)
+            diffs = compute_diff(prev_rows, curr_rows, as_of, aum_by_ticker)
             if not diffs:
                 print(f"{as_of.isoformat()}: 0 diffs (prev {prev_date.isoformat()})")
                 continue
