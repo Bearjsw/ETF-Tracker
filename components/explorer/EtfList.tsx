@@ -66,7 +66,7 @@ export function EtfList({ etfs, navByTicker = {} }: Props) {
               </td>
               <td className="tabular-nums text-sm">{formatKrw(etf.latest_aum)}</td>
               <td>
-                <span className="font-semibold tabular-nums text-[var(--accent)]">{etf.change_count ?? 0}</span>
+                <span className="font-semibold tabular-nums text-[var(--accent)]">{(etf.change_count ?? 0).toLocaleString("ko-KR")}</span>
                 <span className="ml-1 text-xs text-[var(--muted)]">건</span>
                 {etf.recent_delta_sum != null ? (
                   <div className="text-xs text-[var(--muted)]">{formatDeltaPp(etf.recent_delta_sum)} 누적</div>

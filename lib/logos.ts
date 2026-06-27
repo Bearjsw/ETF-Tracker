@@ -4,6 +4,7 @@ import { looksLikeOverseasStockName, resolveStockTickerSymbol } from "@/lib/stoc
 import { canResolveTickerLogo, expandTickerLogoPaths } from "@/lib/stock-logo-variants";
 import {
   isDomesticCommodityEtfName,
+  isDomesticEtfBrandProduct,
   isListedStockCodeProxy,
   resolveDomesticEtfBrandLogo,
 } from "@/lib/domestic-etf-product";
@@ -194,6 +195,15 @@ export function getStockLogoCandidates(stockName?: string | null, stockCode?: st
   const koreanNameLogo = resolveKoreanNameLogo(stockName);
   const overseas = looksLikeOverseasStockName(stockName, code);
   const codeProxy = isListedStockCodeProxy(stockName, code);
+  // KODEX/TIGER 등 국내 ETF 브랜드 상품이 다른 ETF(TDF 등)의 보유 종목으로 잡힌 경우.
+  // 코드(069500 등)는 KRX 상장 주식 유니버스에 없어 codeProxy=false 이므로 별도 처리한다.
+  const etfBrandProduct = isDomesticEtfBrandProduct(stockName);
+
+  // ETF 브랜드 상품은 종목 코드 기반 로고가 없으므로 운용사 브랜드 로고를 최우선으로 둔다.
+  const brandLogo = codeProxy || etfBrandProduct ? resolveDomesticEtfBrandLogo(stockName) : null;
+  if (etfBrandProduct && brandLogo) {
+    candidates.push(logoPath(brandLogo));
+  }
 
   if (code && DOMESTIC_CODE_LOGO[code] && !overseas && !codeProxy) {
     candidates.push(logoPath(DOMESTIC_CODE_LOGO[code]));
@@ -203,8 +213,7 @@ export function getStockLogoCandidates(stockName?: string | null, stockCode?: st
     candidates.push(logoPath(`stock/${encodeURIComponent(domesticCodeLogo)}`));
   }
 
-  const brandLogo = codeProxy ? resolveDomesticEtfBrandLogo(stockName) : null;
-  if (brandLogo) {
+  if (!etfBrandProduct && brandLogo) {
     candidates.push(logoPath(brandLogo));
   }
 

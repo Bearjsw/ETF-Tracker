@@ -42,11 +42,6 @@ export function SignalListSection({ signals, etfMap }: Props) {
 
   return (
     <div className="space-y-4">
-      {signals.length > PAGE_SIZE ? (
-        <p className="text-xs tabular-nums text-[var(--muted)]">
-          {signals.length}건 · {safePage}/{totalPages}페이지
-        </p>
-      ) : null}
       <SignalListTable signals={pageSignals} etfMap={etfMap} />
       <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
     </div>

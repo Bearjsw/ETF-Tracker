@@ -1,7 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import type { EtfReturnRankItem, EtfNavPoint } from "@/lib/types";
 import { EtfCategoryTag } from "@/components/explorer/EtfCategoryTag";
 import { EtfNavSparkline } from "@/components/explorer/EtfNavSparkline";
+import { Pagination } from "@/components/ui/Pagination";
 import { periodToDays, returnPeriodLabel } from "@/lib/rankings";
 import type { ReturnPeriod } from "@/lib/types";
 import { formatKrw, formatManagerShort, formatPercent, strategyLabel } from "@/lib/utils";
@@ -13,15 +17,29 @@ type Props = {
   hideHeader?: boolean;
   /** 순위 테이블에 미니 차트 열 표시 (액티브 ETF 목록 등에서는 생략) */
   showSparkline?: boolean;
+  /** 지정 시 페이지당 항목 수로 페이지네이션 활성화 */
+  pageSize?: number;
 };
 
 export function EtfReturnRankList({
   items,
   navByTicker = {},
-  period = "3m",
+  period = "1w",
   hideHeader = false,
   showSparkline = true,
+  pageSize,
 }: Props) {
+  const [page, setPage] = useState(1);
+  const paginate = pageSize != null && pageSize > 0;
+  const totalPages = paginate ? Math.max(1, Math.ceil(items.length / pageSize)) : 1;
+  const safePage = Math.min(page, totalPages);
+  const rankOffset = paginate ? (safePage - 1) * pageSize : 0;
+  const visibleItems = paginate ? items.slice(rankOffset, rankOffset + pageSize) : items;
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   if (!items.length) {
     return (
       <div className="card text-sm text-[var(--muted)]">
@@ -56,12 +74,12 @@ export function EtfReturnRankList({
           </tr>
         </thead>
         <tbody>
-          {items.map((etf, index) => {
+          {visibleItems.map((etf, index) => {
             const ret = etf.nav_return_pct ?? 0;
             const up = ret >= 0;
             return (
               <tr key={etf.ticker}>
-                <td className="etf-return-rank__rank">{index + 1}</td>
+                <td className="etf-return-rank__rank">{rankOffset + index + 1}</td>
                 <td className="etf-return-rank__name">
                   <Link href={`/etfs/${etf.ticker}`} className="etf-return-rank__link">
                     {etf.name}
@@ -101,6 +119,14 @@ export function EtfReturnRankList({
           })}
         </tbody>
       </table>
+      {paginate ? (
+        <Pagination
+          page={safePage}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          className="mt-3"
+        />
+      ) : null}
     </div>
   );
 }

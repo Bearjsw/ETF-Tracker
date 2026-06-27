@@ -17,28 +17,36 @@ export function SignalFeedSummary({
   if (!signalCount) return null;
 
   const showSplit = accumulation > 0 && distribution > 0;
-  const hints: string[] = [];
+  const chips: { label: string; value?: number; tone?: "up" | "down" }[] = [];
 
   if (consensus > 0) {
-    hints.push(`합의 ${consensus.toLocaleString("ko-KR")}건`);
+    chips.push({ label: "합의", value: consensus });
   }
   if (showSplit) {
-    hints.push(`매집 ${accumulation} · 축소 ${distribution}`);
+    chips.push({ label: "매집", value: accumulation, tone: "up" });
+    chips.push({ label: "축소", value: distribution, tone: "down" });
   } else if (distribution > 0 && accumulation === 0) {
-    hints.push("축소·제외 위주");
+    chips.push({ label: "축소·제외 위주", tone: "down" });
   } else if (accumulation > 0 && distribution === 0 && consensus === 0) {
-    hints.push("확대·편입 위주");
+    chips.push({ label: "확대·편입 위주", tone: "up" });
   }
 
-  if (!hints.length) return null;
+  if (!chips.length) return null;
 
   return (
-    <p className="signal-feed-summary text-sm text-[var(--muted)]">
-      <span>{dataPeriod}</span>
-      <span aria-hidden className="mx-1.5 text-[var(--border-subtle)]">
-        ·
-      </span>
-      <span>{hints.join(" · ")}</span>
-    </p>
+    <div className="signal-feed-summary">
+      <span className="signal-feed-summary__period">{dataPeriod}</span>
+      <div className="signal-feed-summary__chips">
+        {chips.map((chip) => (
+          <span
+            key={chip.label}
+            className={`signal-feed-summary__chip${chip.tone ? ` signal-feed-summary__chip--${chip.tone}` : ""}`}
+          >
+            {chip.label}
+            {chip.value != null ? <b>{chip.value.toLocaleString("ko-KR")}</b> : null}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

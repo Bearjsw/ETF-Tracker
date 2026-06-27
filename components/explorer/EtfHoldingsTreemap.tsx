@@ -338,10 +338,10 @@ export function EtfHoldingsTreemap({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <span className="holdings-treemap-stat">구성종목 {stats.count}개</span>
-        <span className="holdings-treemap-stat holdings-treemap-stat--up">상승 {stats.up}개</span>
-        <span className="holdings-treemap-stat holdings-treemap-stat--down">하락 {stats.down}개</span>
-        <span className="holdings-treemap-stat">보합 {stats.flat}개</span>
+        <span className="holdings-treemap-stat">구성종목 {stats.count.toLocaleString("ko-KR")}개</span>
+        <span className="holdings-treemap-stat holdings-treemap-stat--up">상승 {stats.up.toLocaleString("ko-KR")}개</span>
+        <span className="holdings-treemap-stat holdings-treemap-stat--down">하락 {stats.down.toLocaleString("ko-KR")}개</span>
+        <span className="holdings-treemap-stat">보합 {stats.flat.toLocaleString("ko-KR")}개</span>
         <span className="holdings-treemap-stat">비중합계 {formatNumber(stats.totalWeight, 1)}%</span>
       </div>
 

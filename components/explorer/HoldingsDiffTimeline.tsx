@@ -63,12 +63,6 @@ export function HoldingsDiffTimeline({
 
   return (
     <div className="space-y-4">
-      {usePagination ? (
-        <p className="text-xs tabular-nums text-[var(--muted)]">
-          {diffs.length}건 · {safePage}/{totalPages}페이지
-        </p>
-      ) : null}
-
       <div className="card overflow-x-auto">
         <h2 className="section-title mb-3">{title}</h2>
         <table className="timeline-table">

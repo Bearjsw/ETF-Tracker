@@ -42,11 +42,6 @@ export function NewListingsSection({ items, days }: Props) {
 
   return (
     <div className="space-y-4">
-      {items.length > PAGE_SIZE ? (
-        <p className="text-xs tabular-nums text-[var(--muted)]">
-          {items.length}종 · {safePage}/{totalPages}페이지
-        </p>
-      ) : null}
       <NewListingsTable items={pageItems} days={days} totalCount={items.length} />
       <Pagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
     </div>

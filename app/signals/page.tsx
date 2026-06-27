@@ -116,9 +116,7 @@ export default async function SignalsPage({ searchParams }: { searchParams: Sear
 
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="section-title">
-            {sectionTitle} ({signals.length.toLocaleString("ko-KR")}종목)
-          </h2>
+          <h2 className="section-title">{sectionTitle}</h2>
           <Link href="/" className="text-sm font-semibold text-[var(--accent)] hover:underline">
             홈으로
           </Link>

@@ -28,11 +28,6 @@ export function ActiveMarketOverviewCard({
       <div className="market-overview-head">
         <h2 className="section-title shrink-0">액티브 ETF 시장 구성</h2>
         <div className="market-overview-head__end">
-          <p className="market-overview-head__meta text-xs text-[var(--muted)]">
-            추적 중 {overview.etfCount}개 · 설정액 합계 {formatKrw(overview.totalAum)}
-            {overview.asOfDate ? ` · 기준 ${overview.asOfDate}` : null}
-            {manager ? ` · ${manager}` : null}
-          </p>
           <Link
             href={listingsHref}
             className="market-overview-head__link shrink-0 text-xs font-semibold text-[var(--accent)] hover:underline"

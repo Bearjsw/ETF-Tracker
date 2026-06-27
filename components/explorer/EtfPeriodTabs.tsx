@@ -29,7 +29,7 @@ export function EtfPeriodTabs({ current, basePath = "/etfs" }: Props) {
     [router, searchParams, basePath],
   );
 
-  const period = current.period ?? "3m";
+  const period = current.period ?? "1w";
 
   return (
     <div className={pending ? "opacity-70" : ""}>

@@ -27,7 +27,7 @@ export default async function EtfsPage({ searchParams }: { searchParams: SearchP
   };
 
   const managers = await fetchManagers();
-  const ranked = await fetchEtfReturnRankings(filters, period, 50);
+  const ranked = await fetchEtfReturnRankings(filters, period, 100);
 
   return (
     <div className="space-y-6">
@@ -74,7 +74,7 @@ export default async function EtfsPage({ searchParams }: { searchParams: SearchP
       <Suspense fallback={null}>
         <EtfPeriodTabs current={{ period }} />
       </Suspense>
-      <EtfReturnRankList items={ranked} period={period} showSparkline={false} />
+      <EtfReturnRankList items={ranked} period={period} showSparkline={false} pageSize={10} />
     </div>
   );
 }

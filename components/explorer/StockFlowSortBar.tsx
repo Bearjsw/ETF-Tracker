@@ -36,7 +36,7 @@ export function StockFlowSortBar({ current, basePath = "/flows" }: Props) {
   );
 
   const sort = current.sort ?? "turnover";
-  const period = current.period ?? "3m";
+  const period = current.period ?? "1w";
 
   return (
     <div className={`space-y-3 ${pending ? "opacity-70" : ""}`}>

@@ -111,5 +111,5 @@ export function parseStockFlowSort(value?: string | null): StockFlowSort {
 
 export function parseReturnPeriod(value?: string | null): ReturnPeriod {
   if (value && RETURN_PERIODS.some((p) => p.value === value)) return value as ReturnPeriod;
-  return "3m";
+  return "1w";
 }

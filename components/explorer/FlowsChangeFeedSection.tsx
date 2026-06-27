@@ -67,11 +67,6 @@ export function FlowsChangeFeedSection({ changes, priceByStock }: Props) {
             날짜별 필터 · 페이지당 {PAGE_SIZE}건
           </p>
         </div>
-        {filtered.length > 0 ? (
-          <p className="text-xs tabular-nums text-[var(--muted)]">
-            {filtered.length}건 · {safePage}/{totalPages}페이지
-          </p>
-        ) : null}
       </div>
 
       <DatePickerTrigger

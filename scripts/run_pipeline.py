@@ -53,6 +53,9 @@ def main() -> None:
         price_cmd.append("--all-listed")
     run(price_cmd)
     run([py, str(SCRIPTS / "collect_etf_nav_history.py"), "--days", "365", "--limit", str(args.limit), "--all-crawl"])
+    # AUM(설정액)은 NAV 수집 단계에서 안 채워지므로 해당 날짜를 별도 백필한다.
+    if os.environ.get("KRX_ID") and os.environ.get("KRX_PW"):
+        run([py, str(SCRIPTS / "backfill_etf_meta.py"), "--date", args.date, "--refetch-portfolio"])
     run([py, str(SCRIPTS / "backfill_est_flow.py"), "--recalculate"])
     print("\nPipeline complete.")
 

@@ -97,6 +97,11 @@ def main() -> None:
     if not args.skip_prices:
         run([PY, "-u", str(SCRIPTS / "collect_stock_prices.py"), "--days", "365"])
         run([PY, "-u", str(SCRIPTS / "collect_etf_nav_history.py"), "--days", "365", "--limit", "600", "--all-crawl"])
+        # AUM(설정액)은 NAV 수집 단계에서 채워지지 않으므로 별도 백필이 필요하다.
+        # 수집한 날짜(없으면 최신 보유 스냅샷)의 비어 있는 AUM을 채운다.
+        aum_dates = days if days else [d for d in [latest_holdings_date()] if d]
+        for d in aum_dates:
+            run([PY, "-u", str(SCRIPTS / "backfill_etf_meta.py"), "--date", d.isoformat(), "--refetch-portfolio"])
         run([PY, "-u", str(SCRIPTS / "backfill_est_flow.py"), "--recalculate"])
 
     print("\ncollect_recent complete.", flush=True)

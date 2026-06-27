@@ -19,8 +19,7 @@ import {
   fetchStockPriceSparklinesByRef,
 } from "@/lib/db/queries";
 import { parseReturnPeriod, parseStockFlowSort } from "@/lib/rankings";
-import { REBALANCE_FLOW_FOOTNOTE } from "@/lib/est-flow";
-import { formatKrw, formatStatsPeriod } from "@/lib/utils";
+import { formatKrw } from "@/lib/utils";
 
 type SearchParams = Promise<{ manager?: string; sort?: string; period?: string }>;
 
@@ -78,24 +77,13 @@ export default async function HomePage({ searchParams }: { searchParams: SearchP
       <ManagerFilter managers={managers} current={manager} />
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="최근 변화" value={`${stats.changeCount}건`} sub={formatStatsPeriod(stats)} />
         <StatCard
-          label="순매수 추정"
-          value={formatKrw(stats.accumulationFlow)}
-          sub={`최근 ${stats.windowDays ?? 3}일 · ${REBALANCE_FLOW_FOOTNOTE}`}
-          trend="positive"
+          label={`최근 ${stats.windowDays ?? 3}일 변화`}
+          value={`${stats.changeCount.toLocaleString("ko-KR")}건`}
         />
-        <StatCard
-          label="순매도 추정"
-          value={formatKrw(stats.distributionFlow)}
-          sub={`최근 ${stats.windowDays ?? 3}일 · ${REBALANCE_FLOW_FOOTNOTE}`}
-          trend="negative"
-        />
-        <StatCard
-          label="활성 시그널"
-          value={`${stats.signalCount}건`}
-          sub={`추적 중 ${stats.activeEtfCount}개 ETF`}
-        />
+        <StatCard label="순매수 추정" value={formatKrw(stats.accumulationFlow)} trend="positive" />
+        <StatCard label="순매도 추정" value={formatKrw(stats.distributionFlow)} trend="negative" />
+        <StatCard label="활성 시그널" value={`${stats.signalCount.toLocaleString("ko-KR")}건`} />
       </section>
 
       <ActiveMarketOverviewCard overview={marketOverview} manager={manager} />

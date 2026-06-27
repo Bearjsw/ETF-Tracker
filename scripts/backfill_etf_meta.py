@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -111,11 +112,39 @@ def load_targets(conn, as_of: date | None, ticker: str | None) -> list[dict[str,
     )
 
 
+def process_target(target: dict[str, Any], refetch_portfolio: bool, fast: bool) -> dict[str, Any] | None:
+    """Compute meta for one ETF-day. Uses its own DB connection (thread-safe)."""
+    snap_date = date.fromisoformat(str(target["date"]))
+    etf_ticker = str(target["ticker"])
+
+    with get_connection() as conn:
+        baseline_aum, baseline_nav = load_baseline(conn, etf_ticker, snap_date)
+        holdings = load_holdings_from_db(conn, etf_ticker, snap_date)
+
+    portfolio_df = fetch_portfolio_df(etf_ticker, snap_date) if refetch_portfolio else None
+
+    meta = build_meta(
+        etf_ticker,
+        snap_date,
+        portfolio_df=portfolio_df,
+        holdings=holdings,
+        baseline_aum=baseline_aum,
+        baseline_nav=baseline_nav,
+        holdings_price_lookup=not fast,
+    )
+
+    if meta.get("aum") is None and meta.get("nav") is None:
+        return None
+
+    return {"date": snap_date.isoformat(), "etf_ticker": etf_ticker, **meta}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backfill ETF AUM in etf_meta_daily")
     parser.add_argument("--date", type=str, default=None, help="Single date YYYY-MM-DD")
     parser.add_argument("--ticker", type=str, default=None, help="Single ETF ticker")
     parser.add_argument("--fast", action="store_true", help="Skip slow price lookups for holdings sum")
+    parser.add_argument("--workers", type=int, default=8, help="Parallel workers (default: 8)")
     parser.add_argument(
         "--refetch-portfolio",
         action="store_true",
@@ -129,42 +158,49 @@ def main() -> None:
     with get_connection() as conn:
         targets = load_targets(conn, as_of, args.ticker)
 
-    print(f"Backfilling AUM for {len(targets)} ETF-day rows (fast={args.fast})", flush=True)
+    print(
+        f"Backfilling AUM for {len(targets)} ETF-day rows "
+        f"(fast={args.fast}, workers={args.workers})",
+        flush=True,
+    )
     updated = 0
+    batch: list[dict[str, Any]] = []
 
-    with get_connection() as conn:
-        for i, target in enumerate(targets, start=1):
-            snap_date = date.fromisoformat(str(target["date"]))
-            etf_ticker = str(target["ticker"])
-            baseline_aum, baseline_nav = load_baseline(conn, etf_ticker, snap_date)
-
-            portfolio_df = fetch_portfolio_df(etf_ticker, snap_date) if args.refetch_portfolio else None
-            holdings = load_holdings_from_db(conn, etf_ticker, snap_date)
-
-            meta = build_meta(
-                etf_ticker,
-                snap_date,
-                portfolio_df=portfolio_df,
-                holdings=holdings,
-                baseline_aum=baseline_aum,
-                baseline_nav=baseline_nav,
-                holdings_price_lookup=not args.fast,
-            )
-
-            if meta.get("aum") is None and meta.get("nav") is None:
-                continue
-
+    def flush_batch() -> None:
+        nonlocal updated, batch
+        if not batch:
+            return
+        with get_connection() as conn:
             upsert_rows(
                 conn,
                 "etf_meta_daily",
-                [{"date": snap_date.isoformat(), "etf_ticker": etf_ticker, **meta}],
+                batch,
                 conflict_columns=["date", "etf_ticker"],
                 update_columns=["aum", "nav", "listed_shares"],
             )
-            updated += 1
-            if i % 25 == 0 or i == len(targets):
-                print(f"  {i}/{len(targets)} processed, {updated} updated", flush=True)
+        updated += len(batch)
+        batch = []
 
+    workers = max(1, args.workers)
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = {
+            ex.submit(process_target, t, args.refetch_portfolio, args.fast): t
+            for t in targets
+        }
+        for i, fut in enumerate(as_completed(futures), start=1):
+            try:
+                row = fut.result()
+            except Exception as exc:  # noqa: BLE001
+                print(f"  ! error: {exc}", flush=True)
+                row = None
+            if row:
+                batch.append(row)
+            if len(batch) >= 50:
+                flush_batch()
+            if i % 25 == 0 or i == len(targets):
+                print(f"  {i}/{len(targets)} processed, {updated + len(batch)} updated", flush=True)
+
+    flush_batch()
     print(f"Done: {updated} rows upserted", flush=True)
 
 

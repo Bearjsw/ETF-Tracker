@@ -101,7 +101,7 @@ export default async function EtfDetailPage({ params }: { params: Params }) {
             </div>
             <div>
               <p className="text-label">비중 변화</p>
-              <p className="text-stat mt-1 text-base text-[var(--accent)]">{diffs.length}건</p>
+              <p className="text-stat mt-1 text-base text-[var(--accent)]">{diffs.length.toLocaleString("ko-KR")}건</p>
             </div>
           </div>
         </div>

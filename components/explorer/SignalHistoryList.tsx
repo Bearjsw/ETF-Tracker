@@ -83,7 +83,7 @@ export function SignalHistoryList({ diffs, daysPerPage = 4 }: Props) {
                 return (
                   <li key={key} className={`signal-day-row signal-day-row--${key}`}>
                     <span className="signal-day-row__label">{label}</span>
-                    <span className="signal-day-row__count">{count}건</span>
+                    <span className="signal-day-row__count">{count.toLocaleString("ko-KR")}건</span>
                     <span className="signal-day-row__managers">
                       {managers.length ? managers.join(", ") : "—"}
                     </span>

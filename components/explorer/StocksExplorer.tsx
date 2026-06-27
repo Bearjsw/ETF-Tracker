@@ -222,11 +222,9 @@ export function StocksExplorer({ stocks }: Props) {
         className="segmented-control-full segmented-control-wrap"
       />
 
-      {filtered.length > PAGE_SIZE || searchQuery ? (
+      {searchQuery ? (
         <p className="text-xs tabular-nums text-[var(--muted)]">
-          {searchQuery ? `“${searchQuery}” ` : ""}
-          {filtered.length}종
-          {filtered.length > PAGE_SIZE ? ` · ${safePage}/${totalPages}페이지` : ""}
+          “{searchQuery}” 검색 결과
         </p>
       ) : null}
 
