@@ -1,0 +1,32 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ETF Tracker">
+  <circle cx="128" cy="128" r="128" fill="#163300"/>
+  <g stroke="#9fe870" stroke-width="8" stroke-linecap="round">
+    <line x1="128" y1="66" x2="86" y2="112"/>
+    <line x1="128" y1="66" x2="170" y2="112"/>
+    <line x1="86" y1="112" x2="60" y2="156"/>
+    <line x1="86" y1="112" x2="104" y2="156"/>
+    <line x1="170" y1="112" x2="152" y2="156"/>
+    <line x1="170" y1="112" x2="196" y2="156"/>
+    <line x1="96" y1="196" x2="152" y2="156"/>
+  </g>
+  <g>
+    <circle cx="128" cy="66" r="15" fill="#9fe870"/>
+    <circle cx="86" cy="112" r="15" fill="#9fe870"/>
+    <circle cx="170" cy="112" r="15" fill="#9fe870"/>
+    <circle cx="60" cy="156" r="15" fill="#9fe870"/>
+    <circle cx="104" cy="156" r="15" fill="#9fe870"/>
+    <circle cx="152" cy="156" r="15" fill="#9fe870"/>
+    <circle cx="196" cy="156" r="15" fill="#9fe870"/>
+    <circle cx="96" cy="196" r="15" fill="#9fe870"/>
+  </g>
+  <g fill="#163300">
+    <circle cx="128" cy="66" r="6.5"/>
+    <circle cx="86" cy="112" r="6.5"/>
+    <circle cx="170" cy="112" r="6.5"/>
+    <circle cx="60" cy="156" r="6.5"/>
+    <circle cx="104" cy="156" r="6.5"/>
+    <circle cx="152" cy="156" r="6.5"/>
+    <circle cx="196" cy="156" r="6.5"/>
+    <circle cx="96" cy="196" r="6.5"/>
+  </g>
+</svg>

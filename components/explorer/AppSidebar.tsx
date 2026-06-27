@@ -134,14 +134,16 @@ export function AppSidebar() {
           <MenuIcon />
         </button>
         <Link href="/" className="mobile-nav-brand">
-          <span className="sidebar-logo">E</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="ETF Tracker" className="sidebar-logo sidebar-logo--img" width={36} height={36} />
           <span className="sidebar-title">ETF Tracker</span>
         </Link>
       </header>
 
       <aside className="app-sidebar app-sidebar--desktop">
         <Link href="/" className="sidebar-brand">
-          <span className="sidebar-logo">E</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="ETF Tracker" className="sidebar-logo sidebar-logo--img" width={36} height={36} />
           <span className="sidebar-title">ETF Tracker</span>
         </Link>
 
@@ -164,7 +166,8 @@ export function AppSidebar() {
         <aside className="mobile-nav-panel" role="dialog" aria-modal="true" aria-label="메뉴">
           <div className="mobile-nav-panel__head">
             <Link href="/" className="sidebar-brand" onClick={() => setMenuOpen(false)}>
-              <span className="sidebar-logo">E</span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.svg" alt="ETF Tracker" className="sidebar-logo sidebar-logo--img" width={36} height={36} />
               <span className="sidebar-title">ETF Tracker</span>
             </Link>
             <button
