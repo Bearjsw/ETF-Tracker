@@ -66,7 +66,7 @@ function TreemapCell(props: CellProps) {
     fill = "#e8ebe6",
   } = props;
 
-  if ((depth ?? 1) === 0 || !stock_code) return null;
+  if ((depth ?? 1) === 0 || !stock_code) return <g />;
 
   const { innerX, innerY, innerW, innerH, radius } = treemapCellLayout(
     x,
